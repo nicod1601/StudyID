@@ -1,0 +1,49 @@
+#!/bin/bash
+set -e
+
+# Se placer dans le dossier du script, quel que soit l'endroit d'où il est lancé
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "============================================"
+echo "  StudyIDE - Vérification de l'environnement"
+echo "============================================"
+echo ""
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js / npm n'est pas installé sur ce PC."
+  echo ""
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "Installation automatique de Node.js (mot de passe administrateur requis)..."
+    sudo apt-get update
+    sudo apt-get install -y nodejs npm
+  else
+    echo "Impossible d'installer Node.js automatiquement (apt introuvable)."
+    echo "Installe Node.js manuellement depuis https://nodejs.org puis relance ce script."
+    read -p "Appuie sur Entrée pour fermer..."
+    exit 1
+  fi
+fi
+
+echo "Node.js / npm détecté : OK"
+echo ""
+
+if [ ! -d "node_modules" ]; then
+  echo "Première installation des dépendances de StudyIDE."
+  echo "Cela peut prendre 1 à 2 minutes, merci de patienter..."
+  echo ""
+  npm install
+  echo ""
+  echo "Dépendances installées avec succès."
+  echo ""
+else
+  echo "Dépendances déjà installées : OK"
+  echo ""
+fi
+
+echo "Lancement de StudyIDE..."
+echo ""
+npm start
+
+echo ""
+read -p "StudyIDE a été fermé. Appuie sur Entrée pour fermer cette fenêtre..."

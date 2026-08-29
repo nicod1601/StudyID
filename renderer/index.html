@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>StudyIDE</title>
+<link rel="stylesheet" href="vendor/codemirror/codemirror.css" />
+<link rel="stylesheet" href="vendor/codemirror/theme/dracula.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Barre latérale : matières -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">S5</span>
+        <span class="brand-name">StudyIDE</span>
+      </div>
+
+      <div class="mode-switch">
+        <button class="mode-btn active" id="modeCodeBtn">💻 Code</button>
+        <button class="mode-btn" id="modeCoursBtn">📚 Cours</button>
+      </div>
+
+      <div class="env-status" id="envStatus">
+        <span class="dot" id="dotPython"></span> Python
+        <span class="dot" id="dotJava"></span> Java
+      </div>
+
+      <div class="sidebar-scroll" id="courseList"></div>
+
+      <button class="btn-workspace" id="openWorkspaceBtn" title="Ouvrir le dossier des cours">
+        📂 Dossier de travail
+      </button>
+    </aside>
+
+    <!-- ===================== MODE CODE ===================== -->
+    <div class="content-wrapper" id="codeContent">
+      <section class="exercises-panel">
+        <div class="panel-header">
+          <h2 id="courseTitle">Choisis une matière</h2>
+          <button class="btn-primary" id="newExerciseBtn">+ Nouvel exercice</button>
+        </div>
+        <div class="exercise-list" id="exerciseList"></div>
+      </section>
+
+      <main class="editor-area">
+        <div class="editor-tabbar">
+          <div class="tab-info" id="tabInfo">Aucun fichier ouvert</div>
+          <div class="actions">
+            <select id="statusSelect" class="status-select" disabled>
+              <option value="todo">À faire</option>
+              <option value="in-progress">En cours</option>
+              <option value="done">Terminé</option>
+            </select>
+            <button class="btn-run" id="runBtn" disabled>▶ Exécuter</button>
+            <button class="btn-save" id="saveBtn" disabled>💾 Enregistrer</button>
+          </div>
+        </div>
+        <div class="editor-host" id="editorHost"></div>
+        <div class="output-panel">
+          <div class="output-header">
+            <span>Sortie console</span>
+            <button id="clearOutputBtn" class="btn-ghost">Effacer</button>
+          </div>
+          <pre class="output-content" id="outputContent">Lance un exercice pour voir le résultat ici.</pre>
+        </div>
+      </main>
+    </div>
+
+    <!-- ===================== MODE COURS ===================== -->
+    <div class="content-wrapper hidden" id="coursContent">
+      <section class="exercises-panel">
+        <div class="panel-header">
+          <h2 id="coursTitle">Choisis une matière</h2>
+          <button class="btn-primary" id="importPdfBtn">+ Importer un PDF</button>
+        </div>
+        <div class="exercise-list" id="docList"></div>
+      </section>
+
+      <main class="cours-area">
+        <div class="cours-tabbar">
+          <div class="tab-info" id="docTabInfo">Aucun document ouvert</div>
+          <div class="actions">
+            <button class="btn-ghost" id="zoomOutBtn">−</button>
+            <span class="zoom-label" id="zoomLabel">100%</span>
+            <button class="btn-ghost" id="zoomInBtn">+</button>
+          </div>
+        </div>
+        <div class="cours-split">
+          <div class="pdf-viewport" id="pdfViewport">
+            <div class="pdf-empty" id="pdfEmpty">Sélectionne un document PDF à gauche.</div>
+          </div>
+          <div class="pdf-exercises" id="pdfExercisesPanel">
+            <div class="pdf-ex-header">Exercices détectés</div>
+            <div class="pdf-ex-list" id="pdfExList"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    </div>
+  </div>
+
+  <!-- ===================== BULLE IA FLOTTANTE ===================== -->
+  <button class="ia-bubble-btn" id="iaBubbleBtn" title="Parler à l'IA">🤖</button>
+
+  <div class="ia-drawer-overlay" id="iaDrawerOverlay"></div>
+  <aside class="ia-drawer" id="iaDrawer">
+    <div class="ia-drawer-header">
+      <div class="ia-drawer-title">🤖 Assistant IA</div>
+      <div class="ia-drawer-header-actions">
+        <button class="btn-ghost" id="iaToggleOptionsBtn" title="Options">⚙</button>
+        <button class="btn-ghost" id="iaCloseDrawerBtn" title="Fermer">✕</button>
+      </div>
+    </div>
+
+    <div class="ia-current-course" id="iaCurrentCourse">
+      👈 Choisis une matière dans la liste à gauche
+    </div>
+
+    <div class="ia-options-panel hidden" id="iaOptionsPanel">
+      <div class="ia-status" id="iaStatus">
+        <span class="dot" id="iaConnDot"></span> <span id="iaConnLabel">Vérification…</span>
+      </div>
+      <div class="ia-scope">
+        <label>Moteur de réponse</label>
+        <select id="iaEngineSelect">
+          <option value="auto">Auto (recommandé)</option>
+          <option value="gemini">Gemini (en ligne)</option>
+          <option value="local">Mini IA locale (hors ligne)</option>
+          <option value="search">Recherche seule (sans IA)</option>
+        </select>
+        <label>Chercher dans :</label>
+        <select id="iaScopeSelect">
+          <option value="current">Cette matière</option>
+          <option value="all">Toutes les matières</option>
+        </select>
+        <label class="ia-context-toggle">
+          <input type="checkbox" id="iaUseContextCheckbox" checked />
+          Utiliser ce que j'ai ouvert (fichier / exercice) comme contexte
+        </label>
+        <button class="btn-primary" id="iaSettingsBtn">⚙ Réglages avancés (clé API, mini IA locale)</button>
+      </div>
+      <div class="ia-index-status" id="iaIndexStatus"></div>
+    </div>
+
+    <div class="ia-context-chip hidden" id="iaContextChip"></div>
+
+    <main class="ia-area">
+      <div class="ia-messages" id="iaMessages">
+        <div class="ia-welcome">
+          👋 Pose une question sur tes cours. Je cherche d'abord dans les PDF
+          que tu as importés, et si tu es en ligne avec une clé API configurée,
+          je peux aussi chercher sur internet. Ouvre un exercice de code ou un
+          document, et je pourrai en tenir compte directement.
+        </div>
+      </div>
+      <div class="ia-input-bar">
+        <textarea id="iaInput" placeholder="Pose ta question ici... (Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne)"></textarea>
+        <button class="btn-primary" id="iaSendBtn">Envoyer</button>
+      </div>
+    </main>
+  </aside>
+
+  <!-- Modale : réglages IA -->
+  <div class="modal-overlay" id="iaSettingsOverlay">
+    <div class="modal modal-md">
+      <h3>Réglages IA</h3>
+      <label>Clé API Gemini (gratuite)</label>
+      <input type="password" id="geminiKeyInput" placeholder="Colle ta clé ici" />
+      <p class="settings-hint">
+        Obtiens une clé gratuite sur
+        <span class="fake-link" id="openAiStudioLink">aistudio.google.com/apikey</span>
+        (compte Google requis, aucune carte bancaire nécessaire).
+      </p>
+      <label>Modèle (avancé)</label>
+      <input type="text" id="geminiModelInput" placeholder="gemini-2.5-flash" />
+
+      <hr class="settings-sep" />
+
+      <h4 class="settings-subtitle">🧠 Mini IA locale (100% hors ligne)</h4>
+      <p class="settings-hint">
+        Choisis un profil selon tes besoins. Un seul modèle actif à la fois ;
+        change à tout moment, aucune connexion requise une fois téléchargé.
+      </p>
+      <div id="localModelsList"></div>
+      <div class="progress-bar-wrap hidden" id="localAiProgressWrap">
+        <div class="progress-bar-fill" id="localAiProgressFill"></div>
+      </div>
+      <div class="local-ai-status" id="localAiStatus"></div>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelIaSettingsBtn">Annuler</button>
+        <button class="btn-primary" id="saveIaSettingsBtn">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : nouvel exercice -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h3>Nouvel exercice</h3>
+      <label>Nom de l'exercice</label>
+      <input type="text" id="newExName" placeholder="ex : TD1_Tri_Rapide" />
+      <label>Langage</label>
+      <div class="lang-choice">
+        <button class="lang-btn active" data-lang="python">🐍 Python</button>
+        <button class="lang-btn" data-lang="java">☕ Java</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelNewExBtn">Annuler</button>
+        <button class="btn-primary" id="confirmNewExBtn">Créer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : détail exercice PDF (énoncé + solution) -->
+  <div class="modal-overlay" id="pdfExModalOverlay">
+    <div class="modal modal-wide">
+      <div class="pdf-ex-modal-header">
+        <h3 id="pdfExModalTitle">Exercice</h3>
+        <select id="pdfExStatusSelect" class="status-select">
+          <option value="todo">À faire</option>
+          <option value="in-progress">En cours</option>
+          <option value="done">Terminé</option>
+        </select>
+      </div>
+      <div class="pdf-ex-modal-body">
+        <div class="pdf-ex-col">
+          <h4>Énoncé (extrait automatiquement)</h4>
+          <div class="pdf-ex-statement" id="pdfExStatement"></div>
+        </div>
+        <div class="pdf-ex-col">
+          <h4>Explication / Solution</h4>
+          <div class="pdf-ex-solution" id="pdfExSolution"></div>
+          <h4>Mes notes</h4>
+          <textarea id="pdfExUserNotes" placeholder="Écris ici tes propres notes, remarques, ou ta solution..."></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="closePdfExModalBtn">Fermer</button>
+        <button class="btn-primary" id="saveNotesBtn">Enregistrer mes notes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/codemirror/codemirror.js"></script>
+  <script src="vendor/codemirror/mode/python/python.js"></script>
+  <script src="vendor/codemirror/mode/clike/clike.js"></script>
+  <script src="vendor/codemirror/addon/edit/closebrackets.js"></script>
+  <script src="vendor/codemirror/addon/edit/matchbrackets.js"></script>
+  <script src="vendor/pdfjs/pdf.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
+

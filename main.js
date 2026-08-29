@@ -1,0 +1,606 @@
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { spawn } = require('child_process');
+const https = require('https');
+
+// ---------- Mini IA locale (hors ligne) ----------
+
+const MODEL_FILENAME = 'mini-ia-qwen2.5-1.5b-instruct-q4.gguf'; // legacy, gardé pour compat
+const DEFAULT_MODEL_URL = 'https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf'; // legacy
+
+const LOCAL_MODEL_OPTIONS = [
+  {
+    id: 'fast',
+    label: 'Rapide (1,5 Go)',
+    description: 'Réponses quasi instantanées, correct pour des questions simples. Qualité limitée sur du code complexe.',
+    fileName: 'mini-ia-qwen2.5-1.5b-instruct-q4.gguf',
+    url: 'https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf',
+    contextSize: 8192
+  },
+  {
+    id: 'balanced',
+    label: 'Équilibré (recommandé, ~4,7 Go)',
+    description: 'Bien meilleur pour comprendre et expliquer tes cours (management, éco, algo, etc.) et pour du code correct. Plus lent (10-40s/réponse sur CPU).',
+    fileName: 'mini-ia-qwen2.5-7b-instruct-q4.gguf',
+    url: 'https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf',
+    contextSize: 8192
+  },
+  {
+    id: 'code',
+    label: 'Expert Code (~4,7 Go)',
+    description: 'Spécialisé Java/Python : meilleure qualité de code, debug, complétion. Moins bon sur les matières non techniques.',
+    fileName: 'mini-ia-qwen2.5-coder-7b-instruct-q4.gguf',
+    url: 'https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf',
+    contextSize: 16384
+  }
+];
+
+function getModelOption(modelId) {
+  return LOCAL_MODEL_OPTIONS.find((m) => m.id === modelId) || LOCAL_MODEL_OPTIONS[0];
+}
+
+let llamaModuleCache = null;
+let loadedLlamaModel = null;
+let loadedModelId = null;
+let downloadInProgress = null; // stocke l'id du modèle en cours de téléchargement, ou null
+
+function modelsDir() {
+  return path.join(WORKSPACE_DIR, 'models');
+}
+
+async function getLlamaModule() {
+  if (!llamaModuleCache) llamaModuleCache = await import('node-llama-cpp');
+  return llamaModuleCache;
+}
+
+function modelFilePath(modelId) {
+  return path.join(modelsDir(), getModelOption(modelId).fileName);
+}
+
+ipcMain.handle('localAI:listModels', () => {
+  return LOCAL_MODEL_OPTIONS.map((m) => ({
+    id: m.id,
+    label: m.label,
+    description: m.description,
+    downloaded: fs.existsSync(modelFilePath(m.id)),
+    downloading: downloadInProgress === m.id
+  }));
+});
+
+ipcMain.handle('localAI:status', () => {
+  const settings = readSettings();
+  const modelId = settings.localModelId || 'fast';
+  return {
+    modelId,
+    downloaded: fs.existsSync(modelFilePath(modelId)),
+    downloading: downloadInProgress === modelId,
+    modelPath: modelFilePath(modelId)
+  };
+});
+
+ipcMain.handle('localAI:download', async (evt, { modelId }) => {
+  if (downloadInProgress) return { ok: false, error: 'Un téléchargement est déjà en cours.' };
+  if (!fs.existsSync(modelsDir())) fs.mkdirSync(modelsDir(), { recursive: true });
+  const opt = getModelOption(modelId);
+  downloadInProgress = opt.id;
+  try {
+    await downloadFile(opt.url, modelFilePath(opt.id));
+    downloadInProgress = null;
+    return { ok: true };
+  } catch (e) {
+    downloadInProgress = null;
+    return { ok: false, error: e.message };
+  }
+});
+
+function downloadFile(url, finalPath, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirects > 5) { reject(new Error('Trop de redirections.')); return; }
+    const tmpPath = finalPath + '.part';
+    const req = https.get(url, { headers: { 'User-Agent': 'StudyIDE' } }, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        downloadFile(res.headers.location, finalPath, redirects + 1).then(resolve, reject);
+        return;
+      }
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode} — le lien du modèle est peut-être invalide.`));
+        return;
+      }
+      const total = parseInt(res.headers['content-length'] || '0', 10);
+      let received = 0;
+      const file = fs.createWriteStream(tmpPath);
+      res.on('data', (chunk) => {
+        received += chunk.length;
+        if (mainWindow) {
+          mainWindow.webContents.send('localAI:progress', {
+            received, total, percent: total ? Math.round((received / total) * 100) : null
+          });
+        }
+      });
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close(() => {
+          try {
+            fs.renameSync(tmpPath, finalPath);
+            resolve();
+          } catch (e) { reject(e); }
+        });
+      });
+      file.on('error', reject);
+    });
+    req.on('error', reject);
+  });
+}
+
+async function getLoadedModel(modelId) {
+  if (loadedLlamaModel && loadedModelId === modelId) return loadedLlamaModel;
+  // Un autre modèle était chargé : on le libère avant de charger le nouveau.
+  if (loadedLlamaModel) {
+    try { await loadedLlamaModel.dispose(); } catch (e) {}
+    loadedLlamaModel = null;
+  }
+  const { getLlama } = await getLlamaModule();
+  const llama = await getLlama();
+  loadedLlamaModel = await llama.loadModel({ modelPath: modelFilePath(modelId) });
+  loadedModelId = modelId;
+  return loadedLlamaModel;
+}
+
+ipcMain.handle('localAI:ask', async (evt, { prompt }) => {
+  const settings = readSettings();
+  const modelId = settings.localModelId || 'fast';
+  const opt = getModelOption(modelId);
+  if (!fs.existsSync(modelFilePath(modelId))) {
+    return { ok: false, error: 'Le modèle local sélectionné n\'est pas encore téléchargé.' };
+  }
+  try {
+    const { LlamaChatSession } = await getLlamaModule();
+    const model = await getLoadedModel(modelId);
+    const context = await model.createContext({ contextSize: opt.contextSize || 8192 });
+    const session = new LlamaChatSession({ contextSequence: context.getSequence() });
+    const answer = await session.prompt(prompt, { maxTokens: 900 });
+    await context.dispose();
+    return { ok: true, text: answer };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('localAI:delete', (evt, { modelId }) => {
+  try {
+    const fp = modelFilePath(modelId);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    if (loadedModelId === modelId) { loadedLlamaModel = null; loadedModelId = null; }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Dossier de travail de l'utilisateur : ~/StudyIDE
+const WORKSPACE_DIR = path.join(os.homedir(), 'StudyIDE');
+const DB_FILE = path.join(WORKSPACE_DIR, 'studyide-data.json');
+const COURSES_SEED = require('./data/courses.json');
+const SEED_SOLUTIONS = require('./data/seed-solutions.json');
+const SEED_PDFS_DIR = path.join(__dirname, 'data', 'seed-pdfs');
+
+function ensureWorkspace() {
+  if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+  for (const c of COURSES_SEED) {
+    const dir = path.join(WORKSPACE_DIR, c.code);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const docDir = path.join(dir, 'documents');
+    if (!fs.existsSync(docDir)) fs.mkdirSync(docDir, { recursive: true });
+  }
+  if (!fs.existsSync(DB_FILE)) {
+    const initial = { courses: COURSES_SEED, exercises: {}, documents: {}, pdfExercises: {} };
+    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+  }
+  migrateSeedPdfs();
+}
+
+function readDB() {
+  ensureWorkspace();
+  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+  if (!db.documents) db.documents = {};
+  if (!db.pdfExercises) db.pdfExercises = {};
+  return db;
+}
+
+function writeDB(db) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+}
+
+// Copie les PDF de cours livrés avec l'appli dans le workspace, une seule fois,
+// et enregistre les documents (la détection des exercices se fait ensuite côté
+// renderer avec pdf.js, à l'ouverture, puis est mise en cache dans la DB).
+function migrateSeedPdfs() {
+  if (!fs.existsSync(SEED_PDFS_DIR)) return;
+  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+  if (!db.documents) db.documents = {};
+  if (!db.pdfExercises) db.pdfExercises = {};
+  let changed = false;
+  const courseFolders = fs.readdirSync(SEED_PDFS_DIR);
+  for (const courseCode of courseFolders) {
+    const srcDir = path.join(SEED_PDFS_DIR, courseCode);
+    if (!fs.statSync(srcDir).isDirectory()) continue;
+    const destDir = path.join(WORKSPACE_DIR, courseCode, 'documents');
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+    for (const fileName of fs.readdirSync(srcDir)) {
+      const destPath = path.join(destDir, fileName);
+      const alreadyRegistered = Object.values(db.documents).some(
+        (d) => d.courseCode === courseCode && d.fileName === fileName
+      );
+      if (!alreadyRegistered) {
+        if (!fs.existsSync(destPath)) fs.copyFileSync(path.join(srcDir, fileName), destPath);
+        const id = `doc-${courseCode}-${fileName}`.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+        db.documents[id] = {
+          id, courseCode, fileName, filePath: destPath,
+          importedAt: new Date().toISOString(), seeded: true
+        };
+        changed = true;
+      }
+    }
+  }
+  if (changed) fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+}
+
+let mainWindow;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 600,
+    backgroundColor: '#1e1f24',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+}
+
+app.whenReady().then(() => {
+  ensureWorkspace();
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+// ---------- IPC : données (matières / exercices) ----------
+
+ipcMain.handle('db:get', () => readDB());
+
+ipcMain.handle('db:createExercise', (evt, { courseCode, name, language }) => {
+  const db = readDB();
+  const id = `${courseCode}-${Date.now()}`;
+  const ext = language === 'java' ? 'java' : 'py';
+  const safeName = name.replace(/[^a-zA-Z0-9_\-]/g, '_') || 'Exercice';
+  const fileName = language === 'java' ? `${safeName}.java` : `${safeName}.py`;
+  const filePath = path.join(WORKSPACE_DIR, courseCode, fileName);
+
+  const template = language === 'java'
+    ? `public class ${safeName} {\n    public static void main(String[] args) {\n        System.out.println("Hello, ${safeName} !");\n    }\n}\n`
+    : `# ${safeName}\n\ndef main():\n    print("Hello, ${safeName} !")\n\nif __name__ == "__main__":\n    main()\n`;
+
+  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, template, 'utf-8');
+
+  db.exercises[id] = {
+    id, courseCode, name, language, filePath,
+    status: 'todo',
+    createdAt: new Date().toISOString()
+  };
+  writeDB(db);
+  return db.exercises[id];
+});
+
+ipcMain.handle('db:updateExerciseStatus', (evt, { id, status }) => {
+  const db = readDB();
+  if (db.exercises[id]) {
+    db.exercises[id].status = status;
+    writeDB(db);
+  }
+  return db;
+});
+
+ipcMain.handle('db:deleteExercise', (evt, { id, deleteFile }) => {
+  const db = readDB();
+  const ex = db.exercises[id];
+  if (ex) {
+    if (deleteFile && fs.existsSync(ex.filePath)) {
+      try { fs.unlinkSync(ex.filePath); } catch (e) {}
+    }
+    delete db.exercises[id];
+    writeDB(db);
+  }
+  return db;
+});
+
+// ---------- IPC : fichiers ----------
+
+ipcMain.handle('file:read', (evt, filePath) => {
+  try {
+    return { ok: true, content: fs.readFileSync(filePath, 'utf-8') };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('file:write', (evt, { filePath, content }) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('file:openExternal', (evt, filePath) => {
+  shell.showItemInFolder(filePath);
+});
+
+ipcMain.handle('app:openUrl', (evt, url) => {
+  shell.openExternal(url);
+});
+
+ipcMain.handle('file:importDialog', async (evt, courseCode) => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'Code', extensions: ['py', 'java', 'txt'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const src = res.filePaths[0];
+  const dest = path.join(WORKSPACE_DIR, courseCode, path.basename(src));
+  fs.copyFileSync(src, dest);
+  return dest;
+});
+
+// ---------- IPC : exécution de code ----------
+
+function checkTool(cmd, args = ['--version']) {
+  return new Promise((resolve) => {
+    const p = spawn(cmd, args);
+    let ok = false;
+    p.on('error', () => resolve(false));
+    p.on('exit', (code) => resolve(true));
+  });
+}
+
+ipcMain.handle('run:checkEnv', async () => {
+  const python = await checkTool(process.platform === 'win32' ? 'python' : 'python3', ['--version']);
+  const java = await checkTool('java', ['-version']);
+  const javac = await checkTool('javac', ['-version']);
+  return { python, java, javac };
+});
+
+ipcMain.handle('run:execute', async (evt, { filePath, language }) => {
+  return new Promise((resolve) => {
+    const cwd = path.dirname(filePath);
+    const baseName = path.basename(filePath, path.extname(filePath));
+    let child;
+    let output = '';
+    let errorOutput = '';
+
+    if (language === 'python') {
+      const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+      child = spawn(pyCmd, [filePath], { cwd });
+      pipe(child);
+    } else if (language === 'java') {
+      const compile = spawn('javac', [filePath], { cwd });
+      let compileErr = '';
+      compile.stderr.on('data', (d) => (compileErr += d.toString()));
+      compile.on('error', (e) => resolve({ ok: false, output: '', error: `javac introuvable : ${e.message}` }));
+      compile.on('exit', (code) => {
+        if (code !== 0) {
+          resolve({ ok: false, output: '', error: compileErr || 'Erreur de compilation.' });
+          return;
+        }
+        child = spawn('java', ['-cp', cwd, baseName], { cwd });
+        pipe(child);
+      });
+      return;
+    } else {
+      resolve({ ok: false, output: '', error: 'Langage non supporté.' });
+      return;
+    }
+
+    function pipe(proc) {
+      proc.stdout.on('data', (d) => (output += d.toString()));
+      proc.stderr.on('data', (d) => (errorOutput += d.toString()));
+      proc.on('error', (e) => resolve({ ok: false, output, error: `Impossible de lancer : ${e.message}` }));
+      proc.on('exit', (code) => {
+        resolve({ ok: code === 0, output, error: errorOutput, exitCode: code });
+      });
+    }
+  });
+});
+
+const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
+
+function readSettings() {
+  if (!fs.existsSync(SETTINGS_FILE)) {
+    const initial = { geminiApiKey: '', geminiModel: 'gemini-2.5-flash', localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+    return initial;
+  }
+  try {
+    const s = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    if (!s.localModelUrl) s.localModelUrl = DEFAULT_MODEL_URL;
+    if (!s.localModelId) s.localModelId = 'fast';
+    if (!s.iaEngine) s.iaEngine = 'auto';
+    return s;
+  } catch (e) {
+    return { geminiApiKey: '', geminiModel: 'gemini-2.5-flash', localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
+  }
+}
+
+function writeSettings(s) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2), 'utf-8');
+}
+
+ipcMain.handle('settings:get', () => readSettings());
+ipcMain.handle('settings:set', (evt, s) => { writeSettings(s); return readSettings(); });
+
+// ---------- IPC : cache du texte extrait des PDF (pour la recherche IA) ----------
+
+ipcMain.handle('docs:savePageText', (evt, { documentId, pages }) => {
+  const db = readDB();
+  if (db.documents[documentId]) {
+    db.documents[documentId].pages = pages; // tableau de string, 1 par page
+    writeDB(db);
+  }
+  return db.documents[documentId];
+});
+
+ipcMain.handle('app:getWorkspaceDir', () => WORKSPACE_DIR);
+
+ipcMain.handle('docs:getSearchCorpus', () => {
+  const db = readDB();
+  const chunks = [];
+  for (const doc of Object.values(db.documents)) {
+    if (Array.isArray(doc.pages)) {
+      doc.pages.forEach((text, idx) => {
+        if (text && text.trim()) {
+          chunks.push({
+            type: 'document', courseCode: doc.courseCode, source: doc.fileName,
+            page: idx + 1, text
+          });
+        }
+      });
+    }
+  }
+  for (const ex of Object.values(db.pdfExercises)) {
+    const doc = db.documents[ex.documentId];
+    const parts = [];
+    if (ex.statement) parts.push('Énoncé : ' + ex.statement);
+    if (ex.solution) parts.push('Solution : ' + ex.solution);
+    if (ex.userNotes) parts.push('Notes perso : ' + ex.userNotes);
+    if (parts.length) {
+      chunks.push({
+        type: 'exercise', courseCode: ex.courseCode,
+        source: doc ? doc.fileName : ex.courseCode,
+        page: ex.page, exerciseNumber: ex.number,
+        text: parts.join('\n')
+      });
+    }
+  }
+  return chunks;
+});
+
+// ---------- IPC : documents PDF de cours ----------
+
+ipcMain.handle('docs:listByCourse', (evt, courseCode) => {
+  const db = readDB();
+  return Object.values(db.documents).filter((d) => d.courseCode === courseCode);
+});
+
+ipcMain.handle('docs:readAsBase64', (evt, filePath) => {
+  try {
+    const buf = fs.readFileSync(filePath);
+    return { ok: true, base64: buf.toString('base64') };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('docs:importDialog', async (evt, courseCode) => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  const src = res.filePaths[0];
+  const fileName = path.basename(src);
+  const destDir = path.join(WORKSPACE_DIR, courseCode, 'documents');
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+  const destPath = path.join(destDir, fileName);
+  fs.copyFileSync(src, destPath);
+
+  const db = readDB();
+  const id = `doc-${courseCode}-${fileName}-${Date.now()}`.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+  db.documents[id] = { id, courseCode, fileName, filePath: destPath, importedAt: new Date().toISOString(), seeded: false };
+  writeDB(db);
+  return db.documents[id];
+});
+
+ipcMain.handle('docs:deleteDocument', (evt, { id, deleteFile }) => {
+  const db = readDB();
+  const doc = db.documents[id];
+  if (doc) {
+    if (deleteFile && fs.existsSync(doc.filePath)) {
+      try { fs.unlinkSync(doc.filePath); } catch (e) {}
+    }
+    delete db.documents[id];
+    for (const exId of Object.keys(db.pdfExercises)) {
+      if (db.pdfExercises[exId].documentId === id) delete db.pdfExercises[exId];
+    }
+    writeDB(db);
+  }
+  return db;
+});
+
+// ---------- IPC : exercices détectés dans les PDF ----------
+
+ipcMain.handle('pdfEx:saveDetected', (evt, { documentId, courseCode, exercises }) => {
+  // exercises: [{ number, title, page, statement }]
+  const db = readDB();
+  // On ne recrée pas si déjà présent pour ce document (on garde d'éventuelles
+  // notes déjà écrites par l'utilisateur), sauf si forcé.
+  const already = Object.values(db.pdfExercises).some((e) => e.documentId === documentId);
+  if (already) return db;
+
+  const fileName = db.documents[documentId]?.fileName || '';
+  for (const ex of exercises) {
+    const id = `pex-${documentId}-${ex.number}`.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+    const solutionKey = `${fileName}::${ex.number}`;
+    db.pdfExercises[id] = {
+      id, documentId, courseCode,
+      number: ex.number,
+      title: ex.title || '',
+      page: ex.page,
+      statement: ex.statement || '',
+      solution: SEED_SOLUTIONS[solutionKey] || '',
+      userNotes: '',
+      status: 'todo'
+    };
+  }
+  writeDB(db);
+  return db;
+});
+
+ipcMain.handle('pdfEx:listByDocument', (evt, documentId) => {
+  const db = readDB();
+  return Object.values(db.pdfExercises)
+    .filter((e) => e.documentId === documentId)
+    .sort((a, b) => Number(a.number) - Number(b.number));
+});
+
+ipcMain.handle('pdfEx:updateNotes', (evt, { id, userNotes }) => {
+  const db = readDB();
+  if (db.pdfExercises[id]) {
+    db.pdfExercises[id].userNotes = userNotes;
+    writeDB(db);
+  }
+  return db.pdfExercises[id];
+});
+
+ipcMain.handle('pdfEx:updateStatus', (evt, { id, status }) => {
+  const db = readDB();
+  if (db.pdfExercises[id]) {
+    db.pdfExercises[id].status = status;
+    writeDB(db);
+  }
+  return db.pdfExercises[id];
+});
