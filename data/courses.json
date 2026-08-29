@@ -1,0 +1,16 @@
+[
+  { "code": "R5.01", "name": "Initiation au management d'une équipe de projet informatique" },
+  { "code": "R5.02", "name": "Projet Personnel et Professionnel" },
+  { "code": "R5.03", "name": "Politique de communication" },
+  { "code": "R5.04", "name": "Qualité algorithmique" },
+  { "code": "R5.05", "name": "Programmation avancée" },
+  { "code": "R5.06", "name": "Programmation multimédia" },
+  { "code": "R5.07", "name": "Automatisation de la chaîne de production" },
+  { "code": "R5.08", "name": "Qualité de développement" },
+  { "code": "R5.09", "name": "Virtualisation avancée" },
+  { "code": "R5.10", "name": "Nouveaux paradigmes de base de données" },
+  { "code": "R5.11", "name": "Méthodes d'optimisation pour l'aide à la décision" },
+  { "code": "R5.12", "name": "Modélisations mathématiques" },
+  { "code": "R5.13", "name": "Économie durable et numérique" },
+  { "code": "R5.14", "name": "Anglais" }
+]
