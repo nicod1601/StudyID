@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const https = require('https');
 
 // ---------- Mini IA locale (hors ligne) ----------
@@ -249,14 +249,24 @@ function migrateSeedPdfs() {
 }
 
 let mainWindow;
+let tray = null;
+let isQuitting = false;
+
+function appIconPath() {
+  const dir = path.join(__dirname, 'build');
+  if (process.platform === 'win32') return path.join(dir, 'icon.ico');
+  return path.join(dir, 'icon.png');
+}
 
 function createWindow() {
+  const iconPath = appIconPath();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1e1f24',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -265,18 +275,54 @@ function createWindow() {
   });
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  mainWindow.on('close', (e) => {
+    const s = readSettings();
+    if (!isQuitting && s.minimizeToTray !== false) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+}
+
+function createTray() {
+  try {
+    const iconPath = path.join(__dirname, 'build', 'icon.png');
+    if (!fs.existsSync(iconPath)) return;
+    let img = nativeImage.createFromPath(iconPath);
+    if (!img.isEmpty()) img = img.resize({ width: 32, height: 32 });
+    tray = new Tray(img);
+    tray.setToolTip('StudyIDE');
+    const menu = Menu.buildFromTemplate([
+      { label: 'Afficher StudyIDE', click: () => { mainWindow.show(); mainWindow.focus(); } },
+      { type: 'separator' },
+      { label: 'Quitter StudyIDE', click: () => { isQuitting = true; app.quit(); } }
+    ]);
+    tray.setContextMenu(menu);
+    tray.on('click', () => {
+      if (mainWindow.isVisible()) mainWindow.hide();
+      else { mainWindow.show(); mainWindow.focus(); }
+    });
+  } catch (e) {
+    console.error('Impossible de créer l\'icône de la zone de notification :', e.message);
+  }
 }
 
 app.whenReady().then(() => {
   ensureWorkspace();
   createWindow();
+  createTray();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    else { mainWindow.show(); mainWindow.focus(); }
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    const s = readSettings();
+    if (s.minimizeToTray === false) app.quit();
+  }
 });
 
 // ---------- IPC : données (matières / exercices) ----------
@@ -518,6 +564,7 @@ ipcMain.handle('terminal:kill', (evt, { id }) => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   for (const { proc } of terminals.values()) {
     try { proc.kill(); } catch (e) {}
   }
@@ -587,7 +634,7 @@ const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
 
 function readSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
+    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
     return initial;
   }
@@ -596,9 +643,10 @@ function readSettings() {
     if (!s.localModelUrl) s.localModelUrl = DEFAULT_MODEL_URL;
     if (!s.localModelId) s.localModelId = 'fast';
     if (!s.iaEngine) s.iaEngine = 'auto';
+    if (s.minimizeToTray === undefined) s.minimizeToTray = true;
     return s;
   } catch (e) {
-    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
+    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true };
   }
 }
 
@@ -688,6 +736,172 @@ ipcMain.handle('notes:openFile', () => {
   if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
   if (!fs.existsSync(NOTES_FILE)) fs.writeFileSync(NOTES_FILE, '', 'utf-8');
   shell.showItemInFolder(NOTES_FILE);
+});
+
+// ---------- IPC : Calcul de notes BUT (saisie manuelle + simulation, pas de scraping) ----------
+
+const BUT_GRADES_FILE = path.join(WORKSPACE_DIR, 'but-grades.json');
+
+// Structure pré-remplie d'après le relevé BUT Informatique — Semestre 5 A
+// (coefficients repris tels quels ; l'étudiant peut tout modifier/ajouter/supprimer).
+const DEFAULT_BUT_GRADES = {
+  portalUrl: 'https://notes-iut.univ-lehavre.fr/',
+  ues: [
+    {
+      id: 'ue-bin51', name: 'BIN51 — Réaliser un développement d\'application',
+      resources: [
+        { id: 'r1', name: 'BINR504 — Qualité algorithmique', coef: 4, grade: null },
+        { id: 'r2', name: 'BINR505 — Programmation avancée', coef: 10, grade: null },
+        { id: 'r3', name: 'BINR506 — Sensibilisation à la programmation multimédia', coef: 6, grade: null },
+        { id: 'r4', name: 'BINR507 — Automatisation de la chaîne de production', coef: 7, grade: null },
+        { id: 'r5', name: 'BINR508 — Qualité de développement', coef: 4, grade: null },
+        { id: 'r6', name: 'BINR509 — Virtualisation avancée', coef: 8, grade: null },
+        { id: 'r7', name: 'BINR510 — Nouveaux paradigmes de base de données', coef: 13, grade: null },
+        { id: 'r8', name: 'BINR513 — Économie durable et numérique', coef: 4, grade: null },
+        { id: 'r9', name: 'BINR514 — Anglais', coef: 4, grade: null },
+        { id: 'r10', name: 'BINS501 — Développement avancé', coef: 40, grade: null }
+      ]
+    },
+    {
+      id: 'ue-bin52', name: 'BIN52 — Optimiser des applications',
+      resources: [
+        { id: 'r11', name: 'BINR504 — Qualité algorithmique', coef: 6, grade: null },
+        { id: 'r12', name: 'BINR505 — Programmation avancée', coef: 7, grade: null },
+        { id: 'r13', name: 'BINR506 — Sensibilisation à la programmation multimédia', coef: 7, grade: null },
+        { id: 'r14', name: 'BINR508 — Qualité de développement', coef: 3, grade: null },
+        { id: 'r15', name: 'BINR509 — Virtualisation avancée', coef: 4, grade: null },
+        { id: 'r16', name: 'BINR510 — Nouveaux paradigmes de base de données', coef: 4, grade: null },
+        { id: 'r17', name: 'BINR511 — Méthodes d\'optimisation pour l\'aide à la décision', coef: 9, grade: null },
+        { id: 'r18', name: 'BINR512 — Modélisations mathématiques', coef: 16, grade: null },
+        { id: 'r19', name: 'BINR514 — Anglais', coef: 4, grade: null },
+        { id: 'r20', name: 'BINS501 — Développement avancé', coef: 40, grade: null }
+      ]
+    },
+    {
+      id: 'ue-bin56', name: 'BIN56 — Collaborer au sein d\'une équipe informatique',
+      resources: [
+        { id: 'r21', name: 'BINR501 — Initiation management équipe informatique', coef: 11, grade: null },
+        { id: 'r22', name: 'BINR502 — PPP', coef: 6, grade: null },
+        { id: 'r23', name: 'BINR503 — Politique de communication', coef: 15, grade: null },
+        { id: 'r24', name: 'BINR506 — Sensibilisation à la programmation multimédia', coef: 4, grade: null },
+        { id: 'r25', name: 'BINR507 — Automatisation de la chaîne de production', coef: 3, grade: null },
+        { id: 'r26', name: 'BINR513 — Économie durable et numérique', coef: 8, grade: null },
+        { id: 'r27', name: 'BINR514 — Anglais', coef: 13, grade: null },
+        { id: 'r28', name: 'BINS501 — Développement avancé', coef: 40, grade: null }
+      ]
+    }
+  ]
+};
+
+ipcMain.handle('but:getGrades', () => {
+  if (!fs.existsSync(BUT_GRADES_FILE)) {
+    if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+    fs.writeFileSync(BUT_GRADES_FILE, JSON.stringify(DEFAULT_BUT_GRADES, null, 2), 'utf-8');
+    return DEFAULT_BUT_GRADES;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(BUT_GRADES_FILE, 'utf-8'));
+  } catch (e) {
+    return DEFAULT_BUT_GRADES;
+  }
+});
+
+ipcMain.handle('but:setGrades', (evt, data) => {
+  if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+  fs.writeFileSync(BUT_GRADES_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  return { ok: true };
+});
+
+ipcMain.handle('but:resetGrades', () => {
+  fs.writeFileSync(BUT_GRADES_FILE, JSON.stringify(DEFAULT_BUT_GRADES, null, 2), 'utf-8');
+  return DEFAULT_BUT_GRADES;
+});
+
+// ---------- IPC : export / sauvegarde de toutes les données ----------
+// Copie le dossier de travail complet (exercices, cours, notes, calcul BUT)
+// vers un emplacement choisi par l'utilisateur. Les modèles d'IA locale
+// (plusieurs Go, retéléchargeables) sont exclus pour rester léger et rapide.
+
+ipcMain.handle('backup:export', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Choisis où exporter tes données StudyIDE'
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+
+  const destRoot = res.filePaths[0];
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const destDir = path.join(destRoot, `StudyIDE-export-${stamp}`);
+
+  try {
+    fs.cpSync(WORKSPACE_DIR, destDir, {
+      recursive: true,
+      filter: (srcPath) => {
+        const rel = path.relative(WORKSPACE_DIR, srcPath);
+        return rel !== 'models' && !rel.startsWith('models' + path.sep);
+      }
+    });
+    return { ok: true, path: destDir };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// ---------- IPC : raccourci sur le bureau ----------
+
+ipcMain.handle('app:createDesktopShortcut', async () => {
+  try {
+    const desktopDir = path.join(os.homedir(), 'Desktop');
+    if (!fs.existsSync(desktopDir)) fs.mkdirSync(desktopDir, { recursive: true });
+    const appDir = app.getAppPath();
+
+    if (process.platform === 'win32') {
+      const targetPath = path.join(appDir, 'Lancer-StudyIDE.bat');
+      const iconPath = path.join(appDir, 'build', 'icon.ico');
+      const shortcutPath = path.join(desktopDir, 'StudyIDE.lnk');
+      const esc = (s) => s.replace(/'/g, "''");
+      const lines = [
+        '$ws = New-Object -ComObject WScript.Shell',
+        `$s = $ws.CreateShortcut('${esc(shortcutPath)}')`,
+        `$s.TargetPath = '${esc(targetPath)}'`,
+        `$s.WorkingDirectory = '${esc(appDir)}'`
+      ];
+      if (fs.existsSync(iconPath)) lines.push(`$s.IconLocation = '${esc(iconPath)}'`);
+      lines.push("$s.Description = 'StudyIDE'", '$s.Save()');
+      const psScript = lines.join('; ');
+
+      await new Promise((resolve, reject) => {
+        execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr?.toString() || err.message));
+          else resolve();
+        });
+      });
+      return { ok: true, path: shortcutPath };
+    }
+
+    if (process.platform === 'linux') {
+      const targetPath = path.join(appDir, 'lancer-studyide.run');
+      const iconPath = path.join(appDir, 'build', 'icon.png');
+      const entry = `[Desktop Entry]\nType=Application\nName=StudyIDE\nComment=Assistant de code et organisateur de cours (Semestre 5)\nExec="${targetPath}"\nIcon=${iconPath}\nTerminal=true\nCategories=Development;Education;\n`;
+
+      const shortcutPath = path.join(desktopDir, 'StudyIDE.desktop');
+      fs.writeFileSync(shortcutPath, entry, 'utf-8');
+      fs.chmodSync(shortcutPath, 0o755);
+
+      // Copie aussi dans le menu d'applications : plus fiable selon les environnements de bureau
+      const appsDir = path.join(os.homedir(), '.local', 'share', 'applications');
+      fs.mkdirSync(appsDir, { recursive: true });
+      const appsEntryPath = path.join(appsDir, 'studyide.desktop');
+      fs.writeFileSync(appsEntryPath, entry, 'utf-8');
+      fs.chmodSync(appsEntryPath, 0o755);
+
+      return { ok: true, path: shortcutPath, needsTrust: true };
+    }
+
+    return { ok: false, error: 'Création automatique de raccourci non prise en charge sur cette plateforme.' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // ---------- IPC : cache du texte extrait des PDF (pour la recherche IA) ----------

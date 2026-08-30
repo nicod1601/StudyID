@@ -1243,3 +1243,197 @@ html, body {
 
 #noteSelectionBtn { border: 1px solid var(--line); }
 #noteSelectionBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* =====================================================================
+   BOUTONS RAPIDES (Voir Note / Calcul note-BUT) + calculateur BUT
+===================================================================== */
+
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+.quick-action-btn {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-mid);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.quick-action-btn:hover { color: var(--text-hi); border-color: var(--accent-dim); background: var(--bg-3); }
+
+.but-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.but-modal-header h3 { margin: 0; flex-shrink: 0; }
+.but-header-actions {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 260px;
+}
+.but-header-actions input {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text-hi);
+  font-size: 12px;
+  outline: none;
+}
+.but-header-actions .btn-ghost {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.but-disclaimer { margin: 10px 0 4px; }
+
+.but-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+.but-summary .big { font-size: 26px; font-weight: 800; color: var(--accent-hi); }
+.but-summary .label { font-size: 12px; color: var(--text-mid); }
+
+.but-ue-list { max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+.but-ue-card {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.but-ue-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.but-ue-header input.ue-name {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-hi);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 3px 2px;
+  outline: none;
+}
+.but-ue-header input.ue-name:focus { border-bottom-color: var(--accent-dim); }
+.but-ue-avg {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 3px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.but-ue-avg.empty { color: var(--text-low); background: var(--bg-3); }
+.but-del-ue {
+  background: none; border: none; color: var(--text-low); cursor: pointer;
+  font-size: 13px; padding: 3px 5px; border-radius: 5px;
+}
+.but-del-ue:hover { color: var(--danger); background: var(--bg-3); }
+
+.but-res-row {
+  display: grid;
+  grid-template-columns: 1fr 64px 70px 26px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+}
+.but-res-row input.res-name {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text-hi);
+  font-size: 12px;
+  outline: none;
+}
+.but-res-row input.res-coef, .but-res-row input.res-grade {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 6px;
+  color: var(--text-hi);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+  font-family: var(--mono);
+}
+.but-res-row input.res-coef:focus, .but-res-row input.res-grade:focus, .but-res-row input.res-name:focus {
+  border-color: var(--accent-dim);
+}
+.but-res-row input.res-grade.grade-low { color: var(--danger); }
+.but-res-row input.res-grade.grade-ok { color: var(--accent-hi); }
+.but-del-res {
+  background: none; border: none; color: var(--text-low); cursor: pointer;
+  font-size: 12px; padding: 3px; border-radius: 5px;
+}
+.but-del-res:hover { color: var(--danger); }
+
+.but-res-legend {
+  display: grid;
+  grid-template-columns: 1fr 64px 70px 26px;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-low);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.but-add-res-btn {
+  margin-top: 6px;
+  background: none;
+  border: 1px dashed var(--line);
+  color: var(--text-low);
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+  width: 100%;
+}
+.but-add-res-btn:hover { color: var(--text-hi); border-color: var(--accent-dim); }
+
+.but-add-ue-btn { margin: 4px 0 0; }
+
+/* =====================================================================
+   PARAMÈTRES DE L'APPLI (arrière-plan, export, raccourci bureau)
+===================================================================== */
+
+.app-settings-section { margin: 14px 0; }
+.settings-sep-visible { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+.app-settings-section .settings-subtitle { margin: 0 0 4px; font-size: 13px; color: var(--text-hi); }
+.app-settings-section .btn-primary { width: auto; padding: 9px 16px; margin-top: 8px; }
+.export-status {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-low);
+  line-height: 1.5;
+}
+.export-status.ok { color: var(--accent-hi); }
+.export-status.err { color: var(--danger); }

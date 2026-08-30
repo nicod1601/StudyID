@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('studyide', {
   deleteNote: (id) => ipcRenderer.invoke('notes:deleteAt', { id }),
   openNotesFile: () => ipcRenderer.invoke('notes:openFile'),
 
+  getButGrades: () => ipcRenderer.invoke('but:getGrades'),
+  setButGrades: (payload) => ipcRenderer.invoke('but:setGrades', payload),
+  resetButGrades: () => ipcRenderer.invoke('but:resetGrades'),
+
+  exportData: () => ipcRenderer.invoke('backup:export'),
+  createDesktopShortcut: () => ipcRenderer.invoke('app:createDesktopShortcut'),
+
   savePageText: (payload) => ipcRenderer.invoke('docs:savePageText', payload),
   getSearchCorpus: () => ipcRenderer.invoke('docs:getSearchCorpus'),
 

@@ -33,6 +33,12 @@
         <button class="mode-btn" id="modeProjetBtn">🗂 Projet</button>
       </div>
 
+      <div class="quick-actions">
+        <button class="quick-action-btn" id="viewNotesQuickBtn">📌 Voir Note</button>
+        <button class="quick-action-btn" id="butCalcBtn">🎓 Calcul note-BUT</button>
+        <button class="quick-action-btn" id="appSettingsBtn">⚙ Paramètres de l'appli</button>
+      </div>
+
       <div class="env-status" id="envStatus">
         <span class="dot" id="dotPython"></span> Python
         <span class="dot" id="dotJava"></span> Java
@@ -309,6 +315,74 @@
       <div class="modal-actions">
         <button class="btn-ghost" id="closePdfExModalBtn">Fermer</button>
         <button class="btn-primary" id="saveNotesBtn">Enregistrer mes notes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : paramètres de l'appli (arrière-plan, export, raccourci bureau) -->
+  <div class="modal-overlay" id="appSettingsModalOverlay">
+    <div class="modal modal-md">
+      <h3>⚙ Paramètres de l'appli</h3>
+
+      <div class="app-settings-section">
+        <label class="ia-context-toggle">
+          <input type="checkbox" id="minimizeToTrayCheckbox" checked />
+          Garder StudyIDE ouvert en arrière-plan (dans la barre système) quand je ferme la fenêtre
+        </label>
+        <p class="settings-hint">Utile pour ne pas relancer l'appli à chaque fois. Retrouve-la via l'icône dans la zone de notification, ou quitte-la complètement depuis son menu.</p>
+      </div>
+
+      <hr class="settings-sep-visible" />
+
+      <div class="app-settings-section">
+        <h4 class="settings-subtitle">📥 Sauvegarder / exporter mes données</h4>
+        <p class="settings-hint">Copie tout ton dossier de travail (exercices, cours importés, notes, calcul BUT) vers un dossier de ton choix — pratique pour une sauvegarde ou changer d'ordinateur.</p>
+        <button class="btn-primary" id="exportDataBtn">📥 Choisir où exporter mes données</button>
+        <div class="export-status" id="exportStatus"></div>
+      </div>
+
+      <hr class="settings-sep-visible" />
+
+      <div class="app-settings-section">
+        <h4 class="settings-subtitle">🖥 Raccourci sur le bureau</h4>
+        <p class="settings-hint">Crée un raccourci StudyIDE directement sur ton bureau, avec l'icône de l'appli.</p>
+        <button class="btn-primary" id="createShortcutBtn">🖥 Créer le raccourci</button>
+        <div class="export-status" id="shortcutStatus"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" id="closeAppSettingsBtn">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : calcul de notes BUT -->
+  <div class="modal-overlay" id="butModalOverlay">
+    <div class="modal modal-wide">
+      <div class="but-modal-header">
+        <h3>🎓 Calcul de notes BUT</h3>
+        <div class="but-header-actions">
+          <input type="text" id="butPortalUrlInput" placeholder="https://notes-iut.univ-lehavre.fr/" />
+          <button class="btn-ghost" id="openButPortalBtn" title="Ouvrir le site officiel dans ton navigateur">🔗 Ouvrir le portail</button>
+        </div>
+      </div>
+      <p class="settings-hint but-disclaimer">
+        ⚠️ Saisie manuelle uniquement — l'appli ne se connecte pas à ton compte
+        universitaire (ni mot de passe stocké). Entre tes notes ici pour
+        calculer tes moyennes avec tes vrais coefficients et simuler des
+        scénarios ("et si j'ai 14 au prochain contrôle ?").
+      </p>
+
+      <div class="but-summary" id="butOverallSummary"></div>
+
+      <div class="but-ue-list" id="butUeList"></div>
+
+      <button class="btn-workspace but-add-ue-btn" id="butAddUeBtn">+ Ajouter une UE</button>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" id="butResetBtn">↺ Réinitialiser</button>
+        <button class="btn-ghost" id="closeButModalBtn">Fermer</button>
+        <button class="btn-primary" id="saveButGradesBtn">💾 Enregistrer</button>
       </div>
     </div>
   </div>
