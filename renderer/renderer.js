@@ -34,6 +34,7 @@ async function init() {
   cm.on('change', () => {
     if (currentExercise) { dirty = true; updateSaveState(); }
   });
+  cm.on('cursorActivity', updateNoteBtnState);
 
   const env = await window.studyide.checkEnv();
   el('dotPython').classList.toggle('ok', env.python);
@@ -41,8 +42,10 @@ async function init() {
 
   bindEvents();
   bindCoursEvents();
+  bindProjectEvents();
   bindIaEvents();
   bindIaBubbleEvents();
+  bindNotesEvents();
 }
 
 function renderCourseList() {
@@ -83,6 +86,7 @@ function renderExerciseList() {
   for (const ex of exs) {
     const card = document.createElement('div');
     card.className = 'exercise-card' + (currentExercise?.id === ex.id ? ' selected' : '');
+    card.dataset.status = ex.status;
     const icon = ex.language === 'java' ? '☕' : '🐍';
     card.innerHTML = `
       <div class="name">${icon} ${ex.name}</div>
@@ -232,9 +236,12 @@ function switchMode(mode) {
   currentMode = mode;
   el('modeCodeBtn').classList.toggle('active', mode === 'code');
   el('modeCoursBtn').classList.toggle('active', mode === 'cours');
+  el('modeProjetBtn').classList.toggle('active', mode === 'projet');
   el('codeContent').classList.toggle('hidden', mode !== 'code');
   el('coursContent').classList.toggle('hidden', mode !== 'cours');
+  el('projetContent').classList.toggle('hidden', mode !== 'projet');
   if (mode === 'cours' && currentCourse) renderDocList();
+  if (mode === 'projet') initProjectMode();
   updateIaContextChip();
 }
 
@@ -466,6 +473,7 @@ function base64ToUint8Array(base64) {
 function bindCoursEvents() {
   el('modeCodeBtn').onclick = () => switchMode('code');
   el('modeCoursBtn').onclick = () => switchMode('cours');
+  el('modeProjetBtn').onclick = () => switchMode('projet');
 
   el('importPdfBtn').onclick = async () => {
     if (!currentCourse) { alert('Choisis d’abord une matière à gauche.'); return; }
@@ -499,11 +507,394 @@ function bindCoursEvents() {
 }
 
 // =====================================================================
-// MODE IA : recherche locale dans les documents + IA en ligne (Gemini, gratuit)
+// MODE PROJET : ouvrir un dossier (compatible VS Code), arborescence,
+// onglets multi-fichiers, terminal intégré
+// =====================================================================
+
+let pcm = null;               // instance CodeMirror du mode Projet
+let projectRoot = null;       // { path, name }
+let projectStarted = false;   // évite de réinitialiser à chaque switchMode
+let openTabs = [];            // [{ path, name, ext, dirty, value, mode, scrollInfo, cursor }]
+let activeTabPath = null;
+let expandedDirs = new Set(); // chemins de dossiers actuellement dépliés
+let terminalId = null;
+let terminalBusy = false;
+
+const EXT_ICONS = {
+  py: '🐍', java: '☕', js: '🟨', mjs: '🟨', cjs: '🟨', jsx: '🟨',
+  ts: '🔷', tsx: '🔷', html: '🌐', htm: '🌐', css: '🎨', json: '📋',
+  md: '📝', sh: '🐚', bash: '🐚', sql: '🗄', php: '🐘', rs: '🦀',
+  go: '🐹', rb: '💎', yml: '⚙', yaml: '⚙', txt: '📄', gitignore: '🚫',
+  xml: '📰', c: '🔧', h: '🔧', cpp: '🔧'
+};
+
+function extOf(name) {
+  const m = /\.([^.]+)$/.exec(name);
+  return m ? m[1].toLowerCase() : '';
+}
+
+function iconFor(name, isDirectory, isOpenDir) {
+  if (isDirectory) return isOpenDir ? '📂' : '📁';
+  return EXT_ICONS[extOf(name)] || '📄';
+}
+
+function cmModeFor(name) {
+  const ext = extOf(name);
+  switch (ext) {
+    case 'py': return 'python';
+    case 'java': return 'text/x-java';
+    case 'js': case 'mjs': case 'cjs': case 'jsx': return 'javascript';
+    case 'ts': case 'tsx': return 'text/typescript';
+    case 'json': return 'application/json';
+    case 'css': return 'css';
+    case 'html': case 'htm': return 'htmlmixed';
+    case 'xml': return 'xml';
+    case 'md': case 'markdown': return 'markdown';
+    case 'sh': case 'bash': return 'shell';
+    case 'sql': return 'sql';
+    case 'php': return 'php';
+    case 'rs': return 'rust';
+    case 'go': return 'go';
+    case 'rb': return 'ruby';
+    case 'yml': case 'yaml': return 'yaml';
+    default: return 'text/plain';
+  }
+}
+
+async function initProjectMode() {
+  if (!pcm) {
+    pcm = CodeMirror(el('projectEditorHost'), {
+      value: '',
+      theme: 'dracula',
+      lineNumbers: true,
+      indentUnit: 2,
+      tabSize: 2,
+      autoCloseBrackets: true,
+      autoCloseTags: true,
+      matchBrackets: true,
+      styleActiveLine: true,
+      foldGutter: true,
+      gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
+      mode: 'text/plain',
+      readOnly: true,
+      extraKeys: { 'Ctrl-S': saveActiveTab, 'Cmd-S': saveActiveTab }
+    });
+    pcm.on('change', () => {
+      const tab = openTabs.find((t) => t.path === activeTabPath);
+      if (tab && !tab.loading) {
+        tab.dirty = true;
+        renderProjectTabs();
+      }
+    });
+    pcm.on('cursorActivity', updateProjectNoteBtnState);
+  }
+  if (projectStarted) return;
+  projectStarted = true;
+
+  const last = await window.studyide.reopenLastProject();
+  if (last) await openProjectFolder(last);
+}
+
+async function openProjectFolder(root) {
+  projectRoot = root;
+  expandedDirs = new Set([root.path]);
+  openTabs = [];
+  activeTabPath = null;
+  el('projectTitle').textContent = '🗂 ' + root.name;
+  el('projectTitle').title = root.path;
+  el('projectToolbar').classList.remove('hidden');
+  el('projectEditorToolbar').classList.remove('hidden');
+  renderProjectTabs();
+  pcm.setValue('// Sélectionne un fichier à gauche pour l\'ouvrir');
+  pcm.setOption('readOnly', true);
+  el('runActiveFileBtn').disabled = true;
+  await renderFileTree();
+  startProjectTerminal();
+}
+
+async function renderFileTree() {
+  const container = el('fileTree');
+  container.innerHTML = '';
+  if (!projectRoot) {
+    container.innerHTML = '<div class="empty-hint" id="fileTreeEmpty">Ouvre un dossier de projet (ton dépôt Git, ton code VS Code, etc.) pour voir son arborescence ici.</div>';
+    return;
+  }
+  const rootUl = document.createElement('div');
+  await buildTreeLevel(rootUl, projectRoot.path, 0);
+  container.appendChild(rootUl);
+}
+
+async function buildTreeLevel(parentEl, dirPath, depth) {
+  const res = await window.studyide.readProjectDir(dirPath);
+  if (!res.ok) return;
+  for (const entry of res.entries) {
+    const row = document.createElement('div');
+    row.className = 'ft-row' + (entry.ignored ? ' ft-ignored' : '') + (activeTabPath === entry.path ? ' active' : '');
+    row.style.paddingLeft = (6 + depth * 2) + 'px';
+
+    const isOpen = entry.isDirectory && expandedDirs.has(entry.path);
+    row.innerHTML = `
+      <span class="ft-chevron${isOpen ? ' open' : ''}">${entry.isDirectory ? '▸' : ''}</span>
+      <span class="ft-icon">${iconFor(entry.name, entry.isDirectory, isOpen)}</span>
+      <span class="ft-name">${escapeHtml(entry.name)}</span>
+      <span class="ft-row-actions">
+        <button data-act="rename" title="Renommer">✎</button>
+        <button data-act="delete" title="Supprimer">🗑</button>
+      </span>`;
+
+    const childWrap = document.createElement('div');
+    childWrap.className = 'ft-children';
+    childWrap.style.display = isOpen ? '' : 'none';
+
+    row.onclick = async (e) => {
+      if (e.target.closest('.ft-row-actions')) return;
+      if (entry.isDirectory) {
+        const nowOpen = !expandedDirs.has(entry.path);
+        if (nowOpen) expandedDirs.add(entry.path); else expandedDirs.delete(entry.path);
+        row.querySelector('.ft-chevron').classList.toggle('open', nowOpen);
+        childWrap.style.display = nowOpen ? '' : 'none';
+        row.querySelector('.ft-icon').textContent = iconFor(entry.name, true, nowOpen);
+        if (nowOpen && !childWrap.dataset.loaded) {
+          childWrap.dataset.loaded = '1';
+          await buildTreeLevel(childWrap, entry.path, depth + 1);
+        }
+      } else {
+        await openFileInTab(entry.path, entry.name);
+      }
+    };
+
+    row.querySelector('[data-act="rename"]').onclick = async (e) => {
+      e.stopPropagation();
+      const name = prompt('Nouveau nom :', entry.name);
+      if (!name || name === entry.name) return;
+      const res2 = await window.studyide.renameProjectEntry({ oldPath: entry.path, newName: name });
+      if (!res2.ok) { alert(res2.error); return; }
+      renderFileTree();
+    };
+    row.querySelector('[data-act="delete"]').onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer définitivement "${entry.name}" ?`)) return;
+      const res2 = await window.studyide.deleteProjectEntry(entry.path);
+      if (!res2.ok) { alert(res2.error); return; }
+      closeTab(entry.path, true);
+      renderFileTree();
+    };
+
+    parentEl.appendChild(row);
+    parentEl.appendChild(childWrap);
+    if (entry.isDirectory && isOpen) {
+      childWrap.dataset.loaded = '1';
+      await buildTreeLevel(childWrap, entry.path, depth + 1);
+    }
+  }
+}
+
+async function openFileInTab(filePath, name) {
+  let tab = openTabs.find((t) => t.path === filePath);
+  if (!tab) {
+    const res = await window.studyide.readFile(filePath);
+    if (!res.ok) { alert('Impossible d\'ouvrir ce fichier : ' + res.error); return; }
+    tab = { path: filePath, name, ext: extOf(name), dirty: false, value: res.content, mode: cmModeFor(name) };
+    openTabs.push(tab);
+  }
+  activateTab(filePath);
+}
+
+function activateTab(filePath) {
+  // Sauvegarde l'état du tab courant avant de basculer
+  const prev = openTabs.find((t) => t.path === activeTabPath);
+  if (prev) {
+    prev.value = pcm.getValue();
+    prev.scrollInfo = pcm.getScrollInfo();
+    prev.cursor = pcm.getCursor();
+  }
+  activeTabPath = filePath;
+  const tab = openTabs.find((t) => t.path === filePath);
+  if (!tab) return;
+
+  tab.loading = true;
+  pcm.setOption('readOnly', false);
+  pcm.setOption('mode', tab.mode);
+  pcm.setValue(tab.value);
+  if (tab.cursor) pcm.setCursor(tab.cursor);
+  if (tab.scrollInfo) pcm.scrollTo(tab.scrollInfo.left, tab.scrollInfo.top);
+  pcm.focus();
+  tab.loading = false;
+
+  el('runActiveFileBtn').disabled = !['py', 'java', 'js', 'mjs', 'sh'].includes(tab.ext);
+  renderProjectTabs();
+  highlightActiveInTree(filePath);
+}
+
+function highlightActiveInTree(filePath) {
+  document.querySelectorAll('#fileTree .ft-row').forEach((r) => r.classList.remove('active'));
+  // Reconstruction simple : on remet juste la classe sur la ligne correspondant au nom courant
+  // (l'arbre étant re-render au clic, un highlight exact n'est pas critique ici).
+}
+
+function renderProjectTabs() {
+  const bar = el('projectTabbar');
+  bar.innerHTML = '';
+  for (const tab of openTabs) {
+    const t = document.createElement('div');
+    t.className = 'project-tab' + (tab.path === activeTabPath ? ' active' : '');
+    t.innerHTML = `
+      <span class="pt-icon">${iconFor(tab.name, false)}</span>
+      <span class="pt-name">${escapeHtml(tab.name)}</span>
+      ${tab.dirty ? '<span class="pt-dirty"></span>' : ''}
+      <button class="pt-close" title="Fermer">✕</button>`;
+    t.onclick = (e) => {
+      if (e.target.closest('.pt-close')) return;
+      activateTab(tab.path);
+    };
+    t.querySelector('.pt-close').onclick = (e) => {
+      e.stopPropagation();
+      closeTab(tab.path);
+    };
+    bar.appendChild(t);
+  }
+}
+
+function closeTab(filePath, skipConfirm) {
+  const tab = openTabs.find((t) => t.path === filePath);
+  if (tab && tab.dirty && !skipConfirm) {
+    if (!confirm(`"${tab.name}" a des modifications non enregistrées. Fermer quand même ?`)) return;
+  }
+  openTabs = openTabs.filter((t) => t.path !== filePath);
+  if (activeTabPath === filePath) {
+    activeTabPath = null;
+    if (openTabs.length) {
+      activateTab(openTabs[openTabs.length - 1].path);
+    } else {
+      pcm.setValue('// Sélectionne un fichier à gauche pour l\'ouvrir');
+      pcm.setOption('readOnly', true);
+      el('runActiveFileBtn').disabled = true;
+      renderProjectTabs();
+    }
+  } else {
+    renderProjectTabs();
+  }
+}
+
+async function saveActiveTab() {
+  const tab = openTabs.find((t) => t.path === activeTabPath);
+  if (!tab) return;
+  tab.value = pcm.getValue();
+  const res = await window.studyide.writeFile({ filePath: tab.path, content: tab.value });
+  if (res.ok) { tab.dirty = false; renderProjectTabs(); }
+  else alert('Erreur à l\'enregistrement : ' + res.error);
+}
+
+// ---- Terminal intégré ----
+
+function termWrite(text) {
+  const out = el('terminalOutput');
+  out.textContent += text;
+  out.parentElement.scrollTop = out.parentElement.scrollHeight;
+}
+
+async function startProjectTerminal() {
+  if (terminalId) { try { await window.studyide.killTerminal(terminalId); } catch (e) {} }
+  el('terminalOutput').textContent = '';
+  el('terminalCwd').textContent = '— ' + (projectRoot ? projectRoot.path : '');
+  const res = await window.studyide.startTerminal(projectRoot ? projectRoot.path : '');
+  if (res.ok) {
+    terminalId = res.id;
+    termWrite(`Terminal démarré dans ${projectRoot.path}\n`);
+  } else {
+    termWrite('⚠️ Impossible de démarrer le terminal : ' + (res.error || '') + '\n');
+  }
+}
+
+function runCommandInTerminal(cmd) {
+  if (!terminalId) return;
+  el('projectTerminalPanel').classList.remove('collapsed');
+  termWrite(`$ ${cmd}\n`);
+  window.studyide.writeTerminal(terminalId, cmd + '\n');
+}
+
+function runActiveFileInTerminal() {
+  const tab = openTabs.find((t) => t.path === activeTabPath);
+  if (!tab || !terminalId) return;
+  const rel = tab.path; // chemins absolus : plus fiable, quel que soit le cwd courant
+  const isWin = navigator.platform.toLowerCase().includes('win');
+  let cmd;
+  if (tab.ext === 'py') {
+    cmd = `${isWin ? 'python' : 'python3'} "${rel}"`;
+  } else if (tab.ext === 'js' || tab.ext === 'mjs') {
+    cmd = `node "${rel}"`;
+  } else if (tab.ext === 'sh') {
+    cmd = isWin ? `bash "${rel}"` : `bash "${rel}"`;
+  } else if (tab.ext === 'java') {
+    const dir = tab.path.slice(0, tab.path.length - tab.name.length - 1);
+    const className = tab.name.replace(/\.java$/, '');
+    cmd = `javac "${rel}" && java -cp "${dir}" ${className}`;
+  } else {
+    termWrite(`Exécution directe non supportée pour ce type de fichier. Utilise le terminal ci-dessous.\n`);
+    return;
+  }
+  saveActiveTab();
+  runCommandInTerminal(cmd);
+}
+
+function bindProjectEvents() {
+  window.studyide.onTerminalData(({ id, chunk }) => {
+    if (id === terminalId) termWrite(chunk);
+  });
+  window.studyide.onTerminalExit(({ id, code }) => {
+    if (id === terminalId) { termWrite(`\n[processus terminé, code ${code}]\n`); terminalId = null; }
+  });
+
+  el('openProjectBtn').onclick = async () => {
+    const root = await window.studyide.openProjectDialog();
+    if (root) await openProjectFolder(root);
+  };
+
+  el('projectRefreshBtn').onclick = () => renderFileTree();
+
+  el('projectNewFileBtn').onclick = async () => {
+    if (!projectRoot) return;
+    const name = prompt('Nom du nouveau fichier :', 'nouveau-fichier.txt');
+    if (!name) return;
+    const res = await window.studyide.newProjectFile({ dirPath: projectRoot.path, name });
+    if (!res.ok) { alert(res.error); return; }
+    await renderFileTree();
+    openFileInTab(res.path, name);
+  };
+
+  el('projectNewFolderBtn').onclick = async () => {
+    if (!projectRoot) return;
+    const name = prompt('Nom du nouveau dossier :', 'nouveau-dossier');
+    if (!name) return;
+    const res = await window.studyide.newProjectFolder({ dirPath: projectRoot.path, name });
+    if (!res.ok) { alert(res.error); return; }
+    renderFileTree();
+  };
+
+  el('runActiveFileBtn').onclick = runActiveFileInTerminal;
+
+  el('restartTerminalBtn').onclick = () => startProjectTerminal();
+
+  el('toggleTerminalBtn').onclick = () => {
+    el('projectTerminalPanel').classList.toggle('collapsed');
+  };
+
+  el('terminalInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const val = e.target.value;
+      e.target.value = '';
+      if (!terminalId) return;
+      termWrite(`$ ${val}\n`);
+      window.studyide.writeTerminal(terminalId, val + '\n');
+    }
+  });
+}
+
+// =====================================================================
+// MODE IA : recherche locale dans les documents + mini IA locale (hors ligne)
 // =====================================================================
 
 let iaSettings = null;
-let iaOnline = false;
 let iaIndexed = false;
 let iaCorpus = []; // { type, courseCode, source, page, exerciseNumber?, text }
 
@@ -523,8 +914,8 @@ async function initIaMode() {
   updateIaCourseIndicator();
   iaSettings = await window.studyide.getSettings();
   el('iaEngineSelect').value = iaSettings.iaEngine || 'auto';
-  await checkIaConnectivity();
   await refreshLocalAiStatus();
+  await updateIaReadiness();
   await buildSearchIndex();
 }
 
@@ -600,25 +991,17 @@ async function downloadModelProfile(modelId) {
   await renderLocalModelsList();
 }
 
-async function checkIaConnectivity() {
-  iaSettings = await window.studyide.getSettings();
+async function updateIaReadiness() {
   const dot = el('iaConnDot');
   const label = el('iaConnLabel');
-  if (!navigator.onLine) {
+  localAiStatusCache = await window.studyide.getLocalAIStatus();
+  if (localAiStatusCache.downloaded) {
+    dot.classList.add('ok');
+    label.textContent = '🧠 Mini IA locale prête — 100% hors ligne';
+  } else {
     dot.classList.remove('ok');
-    label.textContent = 'Hors ligne — recherche locale uniquement';
-    iaOnline = false;
-    return;
+    label.textContent = 'Aucun profil téléchargé — recherche locale uniquement (⚙ Réglages)';
   }
-  if (!iaSettings.geminiApiKey) {
-    dot.classList.remove('ok');
-    label.textContent = 'En ligne, mais pas de clé API configurée (Réglages)';
-    iaOnline = false;
-    return;
-  }
-  dot.classList.add('ok');
-  label.textContent = 'En ligne — réponses IA + recherche web activées';
-  iaOnline = true;
 }
 
 async function buildSearchIndex() {
@@ -703,7 +1086,7 @@ async function handleIaSend() {
 
   const scope = el('iaScopeSelect').value;
   if (!iaIndexed) await buildSearchIndex();
-  await checkIaConnectivity();
+  await updateIaReadiness();
   localAiStatusCache = await window.studyide.getLocalAIStatus();
 
   const results = localSearch(question, scope);
@@ -714,18 +1097,12 @@ async function handleIaSend() {
     answerOffline(question, results);
     return;
   }
-  if (engine === 'gemini') {
-    if (iaOnline) await answerOnline(question, results, activeContext);
-    else { appendAssistantMessage({ modeLabel: '⚠️ Gemini indisponible', bodyHtml: 'Tu es hors ligne ou sans clé API. Voici la recherche locale à la place :' }); answerOffline(question, results); }
-    return;
-  }
   if (engine === 'local') {
     if (localAiStatusCache.downloaded) await answerLocal(question, results, activeContext);
     else { appendAssistantMessage({ modeLabel: '⚠️ Mini IA locale non installée', bodyHtml: 'Télécharge-la dans "⚙ Réglages". En attendant, voici la recherche locale :' }); answerOffline(question, results); }
     return;
   }
-  // auto : Gemini si en ligne, sinon mini IA locale si dispo, sinon recherche seule
-  if (iaOnline) { await answerOnline(question, results, activeContext); return; }
+  // auto : mini IA locale si disponible, sinon recherche seule
   if (localAiStatusCache.downloaded) { await answerLocal(question, results, activeContext); return; }
   answerOffline(question, results);
 }
@@ -818,77 +1195,9 @@ function answerOffline(question, results) {
   }));
   appendAssistantMessage({
     modeLabel: '🔌 Mode hors ligne — recherche locale (aucun texte généré par IA)',
-    bodyHtml: `Voici les passages de tes documents qui correspondent le mieux à ta question. Connecte-toi et ajoute une clé API dans Réglages pour obtenir une réponse rédigée.`,
+    bodyHtml: `Voici les passages de tes documents qui correspondent le mieux à ta question. Télécharge un profil de mini IA locale dans Réglages pour obtenir une réponse rédigée.`,
     sources
   });
-}
-
-async function answerOnline(question, results, activeContext) {
-  appendAssistantMessage({ modeLabel: '⏳ Recherche en cours…', bodyHtml: 'Interrogation de l\'IA…' });
-  const thinkingMsg = el('iaMessages').lastElementChild;
-
-  const contextBlock = results.length
-    ? results.map((r, i) => `[Source ${i + 1} — ${r.courseCode} / ${r.source}${r.page ? ` p.${r.page}` : ''}]\n${r.text.slice(0, 1200)}`).join('\n\n')
-    : '(aucun passage local pertinent trouvé)';
-  const activeBlock = activeContext ? `\n\n--- Ce que l'étudiant a actuellement ouvert dans l'appli ---\n${activeContext.text}\n--- Fin ---` : '';
-
-  const prompt = `Tu es un assistant pédagogique pour un étudiant en BUT Informatique (Semestre 5). ` +
-    `Réponds à sa question en priorité à partir des extraits de ses cours ci-dessous. ` +
-    `Si les extraits ne suffisent pas, complète avec tes connaissances générales ou une recherche web, ` +
-    `et indique clairement quand tu sors des documents fournis. Sois clair, structuré, avec des exemples si utile. ` +
-    `Si l'étudiant a un fichier de code ouvert, tu peux proposer une version corrigée ou complétée dans un bloc de code.\n\n` +
-    `--- Extraits des cours de l'étudiant ---\n${contextBlock}\n--- Fin des extraits ---${activeBlock}\n\n` +
-    `Question de l'étudiant : ${question}`;
-
-  try {
-    const model = (iaSettings.geminiModel || 'gemini-2.0-flash').trim();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(iaSettings.geminiApiKey)}`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }]
-      })
-    });
-    const data = await resp.json();
-    thinkingMsg.remove();
-
-    if (!resp.ok) {
-      const errMsg = data?.error?.message || `Erreur HTTP ${resp.status}`;
-      appendAssistantMessage({
-        modeLabel: '⚠️ Erreur IA en ligne',
-        bodyHtml: `Impossible d'obtenir une réponse (${escapeHtml(errMsg)}). Vérifie ta clé API dans Réglages. En attendant, voici la recherche locale :`
-      });
-      answerOffline(question, results);
-      return;
-    }
-
-    const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.map((p) => p.text || '').join('') || 'Pas de réponse.';
-    const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
-    const webSources = groundingChunks
-      .filter((c) => c.web)
-      .map((c) => ({ name: c.web.title || c.web.uri, url: c.web.uri }));
-
-    const localSourcesList = results.map((r) => ({
-      name: `${r.courseCode} — ${r.source}${r.page ? ` (page ${r.page})` : ''}`
-    }));
-    if (activeContext) localSourcesList.unshift({ name: `🔗 Contexte utilisé : ${activeContext.label}` });
-
-    appendAssistantMessage({
-      modeLabel: '🌐 En ligne — réponse générée (Gemini) + recherche web si nécessaire',
-      bodyHtml: simpleMarkdown(text),
-      sources: [...localSourcesList, ...webSources]
-    });
-  } catch (e) {
-    thinkingMsg.remove();
-    appendAssistantMessage({
-      modeLabel: '⚠️ Connexion impossible',
-      bodyHtml: `Erreur réseau (${escapeHtml(e.message)}). Passage en recherche locale :`
-    });
-    answerOffline(question, results);
-  }
 }
 
 function escapeHtml(s) {
@@ -911,13 +1220,9 @@ function bindIaEvents() {
     await window.studyide.setSettings({ ...s, iaEngine: el('iaEngineSelect').value });
   };
 
-  window.addEventListener('online', checkIaConnectivity);
-  window.addEventListener('offline', checkIaConnectivity);
+  
 
   el('iaSettingsBtn').onclick = async () => {
-    const s = await window.studyide.getSettings();
-    el('geminiKeyInput').value = s.geminiApiKey || '';
-    el('geminiModelInput').value = s.geminiModel || 'gemini-2.5-flash';
     await refreshLocalAiStatus();
     el('iaSettingsOverlay').classList.add('open');
   };
@@ -926,15 +1231,12 @@ function bindIaEvents() {
     const prev = await window.studyide.getSettings();
     await window.studyide.setSettings({
       ...prev,
-      geminiApiKey: el('geminiKeyInput').value.trim(),
-      geminiModel: el('geminiModelInput').value.trim() || 'gemini-2.5-flash',
       localModelId: selectedLocalModelId
     });
     el('iaSettingsOverlay').classList.remove('open');
-    checkIaConnectivity();
+    updateIaReadiness();
     refreshLocalAiStatus();
   };
-  el('openAiStudioLink').onclick = () => window.studyide.openUrl('https://aistudio.google.com/apikey');
 }
 
 // =====================================================================
@@ -990,7 +1292,7 @@ function openIaDrawer() {
     iaDrawerInitialized = true;
     initIaMode();
   } else {
-    checkIaConnectivity();
+    updateIaReadiness();
   }
 }
 
@@ -1019,6 +1321,123 @@ function bindIaBubbleEvents() {
   el('iaCloseDrawerBtn').onclick = closeIaDrawer;
   el('iaDrawerOverlay').onclick = closeIaDrawer;
   el('iaToggleOptionsBtn').onclick = () => el('iaOptionsPanel').classList.toggle('hidden');
+}
+
+// =====================================================================
+// MES NOTES : capturer une sélection de texte depuis un éditeur et la
+// retrouver plus tard (exercice, DS, futur projet) — stocké dans
+// ~/StudyIDE/data-note.txt
+// =====================================================================
+
+let notesDrawerOpen = false;
+let allNotes = [];
+
+function openNotesDrawer() {
+  notesDrawerOpen = true;
+  el('notesDrawer').classList.add('open');
+  el('notesDrawerOverlay').classList.add('open');
+  el('notesBubbleBtn').classList.add('active');
+  refreshNotesList();
+}
+
+function closeNotesDrawer() {
+  notesDrawerOpen = false;
+  el('notesDrawer').classList.remove('open');
+  el('notesDrawerOverlay').classList.remove('open');
+  el('notesBubbleBtn').classList.remove('active');
+}
+
+async function refreshNotesList() {
+  const res = await window.studyide.listNotes();
+  allNotes = res.ok ? res.notes : [];
+  renderNotesList(el('notesSearchInput')?.value || '');
+}
+
+function renderNotesList(filter) {
+  const listEl = el('notesList');
+  const q = (filter || '').trim().toLowerCase();
+  const notes = q
+    ? allNotes.filter((n) => n.text.toLowerCase().includes(q) || n.header.toLowerCase().includes(q))
+    : allNotes;
+
+  if (!notes.length) {
+    listEl.innerHTML = `<div class="empty-hint">${allNotes.length ? 'Aucune note ne correspond à ta recherche.' : 'Aucune note pour l\'instant. Sélectionne du texte dans un éditeur puis clique sur « 📌 Noter ».'}</div>`;
+    return;
+  }
+  listEl.innerHTML = '';
+  for (const note of notes) {
+    const card = document.createElement('div');
+    card.className = 'note-card';
+    card.innerHTML = `
+      <div class="note-header">
+        <span class="note-meta" title="${escapeHtml(note.header)}">${escapeHtml(note.header)}</span>
+        <span class="note-actions">
+          <button class="note-copy" title="Copier">📋</button>
+          <button class="note-del" title="Supprimer">🗑</button>
+        </span>
+      </div>
+      <div class="note-text">${escapeHtml(note.text)}</div>`;
+    card.querySelector('.note-copy').onclick = async (e) => {
+      await navigator.clipboard.writeText(note.text);
+      const btn = e.currentTarget;
+      const original = btn.textContent;
+      btn.textContent = '✅';
+      setTimeout(() => { btn.textContent = original; }, 1000);
+    };
+    card.querySelector('.note-del').onclick = async () => {
+      if (!confirm('Supprimer cette note ?')) return;
+      await window.studyide.deleteNote(note.id);
+      refreshNotesList();
+    };
+    listEl.appendChild(card);
+  }
+}
+
+async function saveSelectionAsNote(text, courseCode, source, triggerBtn) {
+  if (!text || !text.trim()) return;
+  const res = await window.studyide.appendNote({ text, courseCode, source });
+  if (!res.ok) { alert(res.error || 'Erreur lors de l\'enregistrement de la note.'); return; }
+  if (triggerBtn) {
+    const original = triggerBtn.textContent;
+    triggerBtn.textContent = '✅ Noté !';
+    setTimeout(() => { triggerBtn.textContent = original; }, 1200);
+  }
+  if (notesDrawerOpen) refreshNotesList();
+}
+
+function updateNoteBtnState() {
+  const btn = el('noteSelectionBtn');
+  if (!btn || !cm) return;
+  btn.disabled = !cm.somethingSelected();
+}
+
+function updateProjectNoteBtnState() {
+  const btn = el('projectNoteSelectionBtn');
+  if (!btn || !pcm) return;
+  btn.disabled = !pcm.somethingSelected();
+}
+
+function bindNotesEvents() {
+  el('notesBubbleBtn').onclick = () => { notesDrawerOpen ? closeNotesDrawer() : openNotesDrawer(); };
+  el('notesCloseDrawerBtn').onclick = closeNotesDrawer;
+  el('notesDrawerOverlay').onclick = closeNotesDrawer;
+  el('openNotesFileBtn').onclick = () => window.studyide.openNotesFile();
+  el('notesSearchInput').oninput = (e) => renderNotesList(e.target.value);
+
+  el('noteSelectionBtn').onclick = () => {
+    if (!cm || !cm.somethingSelected()) return;
+    const text = cm.getSelection();
+    const source = currentExercise ? `${currentExercise.name}.${currentExercise.language === 'java' ? 'java' : 'py'}` : 'éditeur de code';
+    saveSelectionAsNote(text, currentCourse, source, el('noteSelectionBtn'));
+  };
+
+  el('projectNoteSelectionBtn').onclick = () => {
+    if (!pcm || !pcm.somethingSelected()) return;
+    const text = pcm.getSelection();
+    const tab = openTabs.find((t) => t.path === activeTabPath);
+    const source = tab ? tab.name : (projectRoot ? projectRoot.name : 'projet');
+    saveSelectionAsNote(text, projectRoot ? projectRoot.name : null, source, el('projectNoteSelectionBtn'));
+  };
 }
 
 init();

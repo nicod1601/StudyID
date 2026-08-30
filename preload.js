@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('studyide', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (payload) => ipcRenderer.invoke('settings:set', payload),
 
+  appendNote: (payload) => ipcRenderer.invoke('notes:append', payload),
+  listNotes: () => ipcRenderer.invoke('notes:list'),
+  deleteNote: (id) => ipcRenderer.invoke('notes:deleteAt', { id }),
+  openNotesFile: () => ipcRenderer.invoke('notes:openFile'),
+
   savePageText: (payload) => ipcRenderer.invoke('docs:savePageText', payload),
   getSearchCorpus: () => ipcRenderer.invoke('docs:getSearchCorpus'),
 
@@ -43,5 +48,29 @@ contextBridge.exposeInMainWorld('studyide', {
     const listener = (evt, data) => callback(data);
     ipcRenderer.on('localAI:progress', listener);
     return () => ipcRenderer.removeListener('localAI:progress', listener);
+  },
+
+  // ---- Mode Projet ----
+  openProjectDialog: () => ipcRenderer.invoke('project:openDialog'),
+  reopenLastProject: () => ipcRenderer.invoke('project:reopenLast'),
+  readProjectDir: (dirPath) => ipcRenderer.invoke('project:readDir', dirPath),
+  newProjectFile: (payload) => ipcRenderer.invoke('project:newFile', payload),
+  newProjectFolder: (payload) => ipcRenderer.invoke('project:newFolder', payload),
+  renameProjectEntry: (payload) => ipcRenderer.invoke('project:rename', payload),
+  deleteProjectEntry: (targetPath) => ipcRenderer.invoke('project:delete', targetPath),
+
+  // ---- Terminal intégré ----
+  startTerminal: (cwd) => ipcRenderer.invoke('terminal:start', { cwd }),
+  writeTerminal: (id, data) => ipcRenderer.invoke('terminal:write', { id, data }),
+  killTerminal: (id) => ipcRenderer.invoke('terminal:kill', { id }),
+  onTerminalData: (callback) => {
+    const listener = (evt, data) => callback(data);
+    ipcRenderer.on('terminal:data', listener);
+    return () => ipcRenderer.removeListener('terminal:data', listener);
+  },
+  onTerminalExit: (callback) => {
+    const listener = (evt, data) => callback(data);
+    ipcRenderer.on('terminal:exit', listener);
+    return () => ipcRenderer.removeListener('terminal:exit', listener);
   }
 });

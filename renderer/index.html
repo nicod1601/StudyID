@@ -5,6 +5,8 @@
 <title>StudyIDE</title>
 <link rel="stylesheet" href="vendor/codemirror/codemirror.css" />
 <link rel="stylesheet" href="vendor/codemirror/theme/dracula.css" />
+<link rel="stylesheet" href="vendor/codemirror/addon/dialog/dialog.css" />
+<link rel="stylesheet" href="vendor/codemirror/addon/fold/foldgutter.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,13 +14,23 @@
     <!-- Barre latérale : matières -->
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">S5</span>
-        <span class="brand-name">StudyIDE</span>
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 18 18">
+            <circle cx="3"  cy="3"  r="1.6"/><circle cx="9"  cy="3"  r="1.6"/><circle cx="15" cy="3"  r="1.6"/>
+            <circle cx="3"  cy="9"  r="1.6" class="dim"/><circle cx="9" cy="9" r="1.6"/><circle cx="15" cy="9" r="1.6" class="dim"/>
+            <circle cx="3"  cy="15" r="1.6"/><circle cx="9"  cy="15" r="1.6" class="dim"/><circle cx="15" cy="15" r="1.6"/>
+          </svg>
+        </span>
+        <span>
+          <span class="brand-name">StudyIDE</span>
+          <span class="brand-sub">Semestre 5 · 14 matières</span>
+        </span>
       </div>
 
       <div class="mode-switch">
         <button class="mode-btn active" id="modeCodeBtn">💻 Code</button>
         <button class="mode-btn" id="modeCoursBtn">📚 Cours</button>
+        <button class="mode-btn" id="modeProjetBtn">🗂 Projet</button>
       </div>
 
       <div class="env-status" id="envStatus">
@@ -53,6 +65,7 @@
               <option value="done">Terminé</option>
             </select>
             <button class="btn-run" id="runBtn" disabled>▶ Exécuter</button>
+            <button class="btn-ghost" id="noteSelectionBtn" disabled title="Enregistrer le texte sélectionné dans Mes notes">📌 Noter</button>
             <button class="btn-save" id="saveBtn" disabled>💾 Enregistrer</button>
           </div>
         </div>
@@ -98,11 +111,80 @@
       </main>
     </div>
 
+    <!-- ===================== MODE PROJET ===================== -->
+    <div class="content-wrapper hidden" id="projetContent">
+      <section class="project-panel">
+        <div class="panel-header project-panel-header">
+          <h2 id="projectTitle" title="">Aucun dossier ouvert</h2>
+          <button class="btn-primary" id="openProjectBtn">📂 Ouvrir un dossier</button>
+        </div>
+        <div class="project-toolbar hidden" id="projectToolbar">
+          <button class="btn-ghost" id="projectNewFileBtn" title="Nouveau fichier">📄+</button>
+          <button class="btn-ghost" id="projectNewFolderBtn" title="Nouveau dossier">📁+</button>
+          <button class="btn-ghost" id="projectRefreshBtn" title="Rafraîchir">⟳</button>
+        </div>
+        <div class="file-tree" id="fileTree">
+          <div class="empty-hint" id="fileTreeEmpty">Ouvre un dossier de projet (ton dépôt Git, ton code VS Code, etc.) pour voir son arborescence ici.</div>
+        </div>
+      </section>
+
+      <main class="project-editor-area">
+        <div class="project-tabbar" id="projectTabbar"></div>
+        <div class="project-editor-toolbar hidden" id="projectEditorToolbar">
+          <span class="pet-hint">Ctrl+S pour enregistrer</span>
+          <button class="btn-ghost" id="projectNoteSelectionBtn" disabled title="Enregistrer le texte sélectionné dans Mes notes">📌 Noter la sélection</button>
+        </div>
+        <div class="editor-host" id="projectEditorHost"></div>
+
+        <div class="project-terminal-panel" id="projectTerminalPanel">
+          <div class="terminal-header">
+            <span>🖥 Terminal <span class="terminal-cwd" id="terminalCwd"></span></span>
+            <div class="actions">
+              <button class="btn-run" id="runActiveFileBtn" disabled>▶ Exécuter le fichier</button>
+              <button class="btn-ghost" id="restartTerminalBtn" title="Redémarrer le terminal">⟳</button>
+              <button class="btn-ghost" id="toggleTerminalBtn" title="Replier/déplier">▾</button>
+            </div>
+          </div>
+          <div class="terminal-body" id="terminalBody">
+            <pre class="terminal-output" id="terminalOutput"></pre>
+            <div class="terminal-input-row">
+              <span class="terminal-prompt">$</span>
+              <input type="text" id="terminalInput" placeholder="Tape une commande et appuie sur Entrée…" autocomplete="off" spellcheck="false" />
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
     </div>
   </div>
 
   <!-- ===================== BULLE IA FLOTTANTE ===================== -->
   <button class="ia-bubble-btn" id="iaBubbleBtn" title="Parler à l'IA">🤖</button>
+
+  <!-- ===================== BULLE MES NOTES ===================== -->
+  <button class="notes-bubble-btn" id="notesBubbleBtn" title="Mes notes">📌</button>
+
+  <div class="ia-drawer-overlay" id="notesDrawerOverlay"></div>
+  <aside class="ia-drawer" id="notesDrawer">
+    <div class="ia-drawer-header">
+      <div class="ia-drawer-title">📌 Mes notes</div>
+      <div class="ia-drawer-header-actions">
+        <button class="btn-ghost" id="openNotesFileBtn" title="Ouvrir data-note.txt dans l'explorateur">📂</button>
+        <button class="btn-ghost" id="notesCloseDrawerBtn" title="Fermer">✕</button>
+      </div>
+    </div>
+    <p class="notes-drawer-hint">
+      Sélectionne du texte dans l'éditeur (Code ou Projet) et clique sur
+      « 📌 Noter » pour l'enregistrer ici. Tout est aussi conservé dans
+      <code>data-note.txt</code> dans ton dossier de travail — retrouvable
+      pendant un exercice, un DS, ou pour un futur projet.
+    </p>
+    <div class="notes-search-row">
+      <input type="text" id="notesSearchInput" placeholder="🔎 Rechercher dans mes notes…" />
+    </div>
+    <div class="notes-list" id="notesList"></div>
+  </aside>
 
   <div class="ia-drawer-overlay" id="iaDrawerOverlay"></div>
   <aside class="ia-drawer" id="iaDrawer">
@@ -126,7 +208,6 @@
         <label>Moteur de réponse</label>
         <select id="iaEngineSelect">
           <option value="auto">Auto (recommandé)</option>
-          <option value="gemini">Gemini (en ligne)</option>
           <option value="local">Mini IA locale (hors ligne)</option>
           <option value="search">Recherche seule (sans IA)</option>
         </select>
@@ -139,7 +220,7 @@
           <input type="checkbox" id="iaUseContextCheckbox" checked />
           Utiliser ce que j'ai ouvert (fichier / exercice) comme contexte
         </label>
-        <button class="btn-primary" id="iaSettingsBtn">⚙ Réglages avancés (clé API, mini IA locale)</button>
+        <button class="btn-primary" id="iaSettingsBtn">⚙ Réglages de la mini IA locale</button>
       </div>
       <div class="ia-index-status" id="iaIndexStatus"></div>
     </div>
@@ -150,9 +231,9 @@
       <div class="ia-messages" id="iaMessages">
         <div class="ia-welcome">
           👋 Pose une question sur tes cours. Je cherche d'abord dans les PDF
-          que tu as importés, et si tu es en ligne avec une clé API configurée,
-          je peux aussi chercher sur internet. Ouvre un exercice de code ou un
-          document, et je pourrai en tenir compte directement.
+          que tu as importés, puis je génère une réponse avec la mini IA
+          locale — 100 % hors ligne, sans clé ni compte. Ouvre un exercice de
+          code ou un document, et je pourrai en tenir compte directement.
         </div>
       </div>
       <div class="ia-input-bar">
@@ -165,23 +246,11 @@
   <!-- Modale : réglages IA -->
   <div class="modal-overlay" id="iaSettingsOverlay">
     <div class="modal modal-md">
-      <h3>Réglages IA</h3>
-      <label>Clé API Gemini (gratuite)</label>
-      <input type="password" id="geminiKeyInput" placeholder="Colle ta clé ici" />
+      <h3>🧠 Mini IA locale</h3>
       <p class="settings-hint">
-        Obtiens une clé gratuite sur
-        <span class="fake-link" id="openAiStudioLink">aistudio.google.com/apikey</span>
-        (compte Google requis, aucune carte bancaire nécessaire).
-      </p>
-      <label>Modèle (avancé)</label>
-      <input type="text" id="geminiModelInput" placeholder="gemini-2.5-flash" />
-
-      <hr class="settings-sep" />
-
-      <h4 class="settings-subtitle">🧠 Mini IA locale (100% hors ligne)</h4>
-      <p class="settings-hint">
-        Choisis un profil selon tes besoins. Un seul modèle actif à la fois ;
-        change à tout moment, aucune connexion requise une fois téléchargé.
+        100 % hors ligne, gratuite, aucun compte ni carte bancaire. Choisis un
+        profil selon tes besoins. Un seul modèle actif à la fois ; change à
+        tout moment, aucune connexion requise une fois téléchargé.
       </p>
       <div id="localModelsList"></div>
       <div class="progress-bar-wrap hidden" id="localAiProgressWrap">
@@ -247,8 +316,33 @@
   <script src="vendor/codemirror/codemirror.js"></script>
   <script src="vendor/codemirror/mode/python/python.js"></script>
   <script src="vendor/codemirror/mode/clike/clike.js"></script>
+  <script src="vendor/codemirror/mode/javascript/javascript.js"></script>
+  <script src="vendor/codemirror/mode/css/css.js"></script>
+  <script src="vendor/codemirror/mode/xml/xml.js"></script>
+  <script src="vendor/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+  <script src="vendor/codemirror/mode/markdown/markdown.js"></script>
+  <script src="vendor/codemirror/mode/shell/shell.js"></script>
+  <script src="vendor/codemirror/mode/sql/sql.js"></script>
+  <script src="vendor/codemirror/mode/php/php.js"></script>
+  <script src="vendor/codemirror/addon/mode/simple.js"></script>
+  <script src="vendor/codemirror/mode/rust/rust.js"></script>
+  <script src="vendor/codemirror/mode/go/go.js"></script>
+  <script src="vendor/codemirror/mode/ruby/ruby.js"></script>
+  <script src="vendor/codemirror/mode/yaml/yaml.js"></script>
   <script src="vendor/codemirror/addon/edit/closebrackets.js"></script>
   <script src="vendor/codemirror/addon/edit/matchbrackets.js"></script>
+  <script src="vendor/codemirror/addon/edit/closetag.js"></script>
+  <script src="vendor/codemirror/addon/selection/active-line.js"></script>
+  <script src="vendor/codemirror/addon/fold/foldcode.js"></script>
+  <script src="vendor/codemirror/addon/fold/foldgutter.js"></script>
+  <script src="vendor/codemirror/addon/fold/brace-fold.js"></script>
+  <script src="vendor/codemirror/addon/fold/indent-fold.js"></script>
+  <script src="vendor/codemirror/addon/fold/xml-fold.js"></script>
+  <script src="vendor/codemirror/addon/search/searchcursor.js"></script>
+  <script src="vendor/codemirror/addon/search/search.js"></script>
+  <script src="vendor/codemirror/addon/dialog/dialog.js"></script>
+  <script src="vendor/codemirror/addon/display/placeholder.js"></script>
+  <script src="vendor/codemirror/addon/comment/comment.js"></script>
   <script src="vendor/pdfjs/pdf.min.js"></script>
   <script src="renderer.js"></script>
 </body>

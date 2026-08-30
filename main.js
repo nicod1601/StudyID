@@ -367,6 +367,162 @@ ipcMain.handle('file:importDialog', async (evt, courseCode) => {
   return dest;
 });
 
+// ---------- IPC : Mode Projet (ouvrir un dossier, arborescence, terminal) ----------
+
+const IGNORED_DIR_NAMES = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'target', 'dist', 'build', '.idea', '.vscode']);
+
+function statEntry(fullPath, name) {
+  const st = fs.statSync(fullPath);
+  return { name, path: fullPath, isDirectory: st.isDirectory(), size: st.isDirectory() ? 0 : st.size };
+}
+
+function listDirEntries(dirPath) {
+  const names = fs.readdirSync(dirPath);
+  const entries = names.map((name) => {
+    try { return statEntry(path.join(dirPath, name), name); } catch (e) { return null; }
+  }).filter(Boolean);
+  entries.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
+  });
+  return entries.map((e) => ({ ...e, ignored: e.isDirectory && IGNORED_DIR_NAMES.has(e.name) }));
+}
+
+ipcMain.handle('project:openDialog', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });
+  if (res.canceled || !res.filePaths.length) return null;
+  const rootPath = res.filePaths[0];
+  const s = readSettings();
+  s.lastProjectPath = rootPath;
+  writeSettings(s);
+  return { path: rootPath, name: path.basename(rootPath) };
+});
+
+ipcMain.handle('project:reopenLast', () => {
+  const s = readSettings();
+  if (s.lastProjectPath && fs.existsSync(s.lastProjectPath)) {
+    return { path: s.lastProjectPath, name: path.basename(s.lastProjectPath) };
+  }
+  return null;
+});
+
+ipcMain.handle('project:readDir', (evt, dirPath) => {
+  try {
+    return { ok: true, entries: listDirEntries(dirPath) };
+  } catch (e) {
+    return { ok: false, error: e.message, entries: [] };
+  }
+});
+
+ipcMain.handle('project:newFile', (evt, { dirPath, name }) => {
+  try {
+    const safeName = name.trim();
+    if (!safeName || safeName.includes('/') || safeName.includes('\\')) return { ok: false, error: 'Nom invalide.' };
+    const filePath = path.join(dirPath, safeName);
+    if (fs.existsSync(filePath)) return { ok: false, error: 'Un fichier ou dossier porte déjà ce nom.' };
+    fs.writeFileSync(filePath, '', 'utf-8');
+    return { ok: true, path: filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('project:newFolder', (evt, { dirPath, name }) => {
+  try {
+    const safeName = name.trim();
+    if (!safeName || safeName.includes('/') || safeName.includes('\\')) return { ok: false, error: 'Nom invalide.' };
+    const folderPath = path.join(dirPath, safeName);
+    if (fs.existsSync(folderPath)) return { ok: false, error: 'Un fichier ou dossier porte déjà ce nom.' };
+    fs.mkdirSync(folderPath, { recursive: true });
+    return { ok: true, path: folderPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('project:rename', (evt, { oldPath, newName }) => {
+  try {
+    const safeName = newName.trim();
+    if (!safeName || safeName.includes('/') || safeName.includes('\\')) return { ok: false, error: 'Nom invalide.' };
+    const newPath = path.join(path.dirname(oldPath), safeName);
+    fs.renameSync(oldPath, newPath);
+    return { ok: true, path: newPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('project:delete', (evt, targetPath) => {
+  try {
+    fs.rmSync(targetPath, { recursive: true, force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// ---------- IPC : Terminal intégré (console de commandes persistante) ----------
+// Remarque : ceci est une "console" qui exécute des commandes ligne par ligne via
+// un shell persistant (cmd.exe / bash), pas un vrai pseudo-terminal (pty). Les
+// programmes interactifs plein écran (vim, htop...) ou colorés ne s'afficheront
+// pas correctement, mais tout le reste (npm, git, python, javac...) fonctionne.
+
+const terminals = new Map(); // id -> { proc, cwd }
+let terminalSeq = 0;
+
+function shellCommand() {
+  if (process.platform === 'win32') return { cmd: 'cmd.exe', args: [] };
+  return { cmd: process.env.SHELL || '/bin/bash', args: ['-i'] };
+}
+
+ipcMain.handle('terminal:start', (evt, { cwd }) => {
+  const id = `term-${++terminalSeq}`;
+  const { cmd, args } = shellCommand();
+  const proc = spawn(cmd, args, {
+    cwd: fs.existsSync(cwd) ? cwd : WORKSPACE_DIR,
+    env: process.env,
+    windowsHide: true
+  });
+  terminals.set(id, { proc, cwd });
+  proc.stdout.on('data', (d) => {
+    if (mainWindow) mainWindow.webContents.send('terminal:data', { id, chunk: d.toString() });
+  });
+  proc.stderr.on('data', (d) => {
+    if (mainWindow) mainWindow.webContents.send('terminal:data', { id, chunk: d.toString() });
+  });
+  proc.on('exit', (code) => {
+    if (mainWindow) mainWindow.webContents.send('terminal:exit', { id, code });
+    terminals.delete(id);
+  });
+  return { ok: true, id };
+});
+
+ipcMain.handle('terminal:write', (evt, { id, data }) => {
+  const t = terminals.get(id);
+  if (!t) return { ok: false, error: 'Terminal introuvable.' };
+  try {
+    t.proc.stdin.write(data);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('terminal:kill', (evt, { id }) => {
+  const t = terminals.get(id);
+  if (t) {
+    try { t.proc.kill(); } catch (e) {}
+    terminals.delete(id);
+  }
+  return { ok: true };
+});
+
+app.on('before-quit', () => {
+  for (const { proc } of terminals.values()) {
+    try { proc.kill(); } catch (e) {}
+  }
+});
+
 // ---------- IPC : exécution de code ----------
 
 function checkTool(cmd, args = ['--version']) {
@@ -431,7 +587,7 @@ const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
 
 function readSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    const initial = { geminiApiKey: '', geminiModel: 'gemini-2.5-flash', localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
+    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
     return initial;
   }
@@ -442,7 +598,7 @@ function readSettings() {
     if (!s.iaEngine) s.iaEngine = 'auto';
     return s;
   } catch (e) {
-    return { geminiApiKey: '', geminiModel: 'gemini-2.5-flash', localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
+    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto' };
   }
 }
 
@@ -452,6 +608,87 @@ function writeSettings(s) {
 
 ipcMain.handle('settings:get', () => readSettings());
 ipcMain.handle('settings:set', (evt, s) => { writeSettings(s); return readSettings(); });
+
+// ---------- IPC : Mes notes (sélections enregistrées depuis l'éditeur) ----------
+// Stocké en clair dans ~/StudyIDE/data-note.txt : lisible/éditable même en dehors
+// de l'appli, et facile à retrouver pendant un exercice, un DS ou un projet futur.
+
+const NOTES_FILE = path.join(WORKSPACE_DIR, 'data-note.txt');
+
+function noteHeader(meta) {
+  const now = new Date();
+  const date = now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const parts = [date];
+  if (meta.courseCode) parts.push(meta.courseCode);
+  if (meta.source) parts.push(meta.source);
+  return `=== ${parts.join(' · ')} ===`;
+}
+
+function parseNoteBlocks(content) {
+  const lines = content.split('\n');
+  const blocks = [];
+  let current = null;
+  for (const line of lines) {
+    const m = /^=== (.+) ===$/.exec(line);
+    if (m) {
+      if (current) blocks.push(current);
+      current = { header: m[1], lines: [] };
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks; // ordre chronologique croissant (le plus ancien en premier)
+}
+
+ipcMain.handle('notes:append', (evt, { text, courseCode, source }) => {
+  try {
+    if (!text || !text.trim()) return { ok: false, error: 'Sélectionne du texte avant d\'enregistrer.' };
+    if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+    const block = `${noteHeader({ courseCode, source })}\n${text.trim()}\n\n`;
+    fs.appendFileSync(NOTES_FILE, block, 'utf-8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('notes:list', () => {
+  try {
+    if (!fs.existsSync(NOTES_FILE)) return { ok: true, notes: [] };
+    const content = fs.readFileSync(NOTES_FILE, 'utf-8');
+    const blocks = parseNoteBlocks(content);
+    const notes = blocks.map((b, i) => ({
+      id: i,
+      header: b.header,
+      text: b.lines.join('\n').replace(/\n+$/, '')
+    }));
+    notes.reverse(); // les plus récentes en premier
+    return { ok: true, notes };
+  } catch (e) {
+    return { ok: false, error: e.message, notes: [] };
+  }
+});
+
+ipcMain.handle('notes:deleteAt', (evt, { id }) => {
+  try {
+    if (!fs.existsSync(NOTES_FILE)) return { ok: true };
+    const content = fs.readFileSync(NOTES_FILE, 'utf-8');
+    const blocks = parseNoteBlocks(content);
+    blocks.splice(id, 1);
+    const newContent = blocks.map((b) => `=== ${b.header} ===\n${b.lines.join('\n').replace(/\n+$/, '')}\n\n`).join('');
+    fs.writeFileSync(NOTES_FILE, newContent, 'utf-8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('notes:openFile', () => {
+  if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+  if (!fs.existsSync(NOTES_FILE)) fs.writeFileSync(NOTES_FILE, '', 'utf-8');
+  shell.showItemInFolder(NOTES_FILE);
+});
 
 // ---------- IPC : cache du texte extrait des PDF (pour la recherche IA) ----------
 
