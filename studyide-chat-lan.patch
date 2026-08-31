@@ -1,0 +1,1908 @@
+diff --git a/main.js b/main.js
+index 85ec4f0..bc9d4d7 100644
+--- a/main.js
++++ b/main.js
+@@ -634,7 +634,7 @@ const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
+ 
+ function readSettings() {
+   if (!fs.existsSync(SETTINGS_FILE)) {
+-    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true };
++    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true };
+     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+     return initial;
+   }
+@@ -644,9 +644,10 @@ function readSettings() {
+     if (!s.localModelId) s.localModelId = 'fast';
+     if (!s.iaEngine) s.iaEngine = 'auto';
+     if (s.minimizeToTray === undefined) s.minimizeToTray = true;
++    if (s.iaNotifications === undefined) s.iaNotifications = true;
+     return s;
+   } catch (e) {
+-    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true };
++    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true };
+   }
+ }
+ 
+@@ -917,6 +918,13 @@ ipcMain.handle('docs:savePageText', (evt, { documentId, pages }) => {
+ 
+ ipcMain.handle('app:getWorkspaceDir', () => WORKSPACE_DIR);
+ 
++ipcMain.handle('app:focusWindow', () => {
++  if (!mainWindow) return;
++  if (mainWindow.isMinimized()) mainWindow.restore();
++  if (!mainWindow.isVisible()) mainWindow.show();
++  mainWindow.focus();
++});
++
+ ipcMain.handle('docs:getSearchCorpus', () => {
+   const db = readDB();
+   const chunks = [];
+diff --git a/preload.js b/preload.js
+index d812c72..d387160 100644
+--- a/preload.js
++++ b/preload.js
+@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('studyide', {
+   executeCode: (payload) => ipcRenderer.invoke('run:execute', payload),
+ 
+   getWorkspaceDir: () => ipcRenderer.invoke('app:getWorkspaceDir'),
++  focusWindow: () => ipcRenderer.invoke('app:focusWindow'),
+ 
+   listDocuments: (courseCode) => ipcRenderer.invoke('docs:listByCourse', courseCode),
+   readPdfBase64: (filePath) => ipcRenderer.invoke('docs:readAsBase64', filePath),
+diff --git a/renderer/index.html b/renderer/index.html
+index de1e1d0..627d208 100644
+--- a/renderer/index.html
++++ b/renderer/index.html
+@@ -171,6 +171,9 @@
+   <!-- ===================== BULLE MES NOTES ===================== -->
+   <button class="notes-bubble-btn" id="notesBubbleBtn" title="Mes notes">📌</button>
+ 
++  <!-- ===================== BULLE CHAT LAN ===================== -->
++  <button class="chat-bubble-btn" id="chatBubbleBtn" title="Discuter avec d'autres StudyIDE (réseau local)">💬</button>
++
+   <div class="ia-drawer-overlay" id="notesDrawerOverlay"></div>
+   <aside class="ia-drawer" id="notesDrawer">
+     <div class="ia-drawer-header">
+@@ -249,6 +252,62 @@
+     </main>
+   </aside>
+ 
++  <!-- ===================== TIROIR CHAT LAN ===================== -->
++  <div class="ia-drawer-overlay" id="chatDrawerOverlay"></div>
++  <aside class="ia-drawer" id="chatDrawer">
++    <div class="ia-drawer-header">
++      <div class="ia-drawer-title">💬 Chat LAN</div>
++      <div class="ia-drawer-header-actions">
++        <button class="btn-ghost hidden" id="chatLogoutBtn" title="Changer de serveur / se déconnecter">⏻</button>
++        <button class="btn-ghost" id="chatCloseDrawerBtn" title="Fermer">✕</button>
++      </div>
++    </div>
++
++    <!-- Écran de connexion / inscription -->
++    <div class="chat-auth" id="chatAuthPanel">
++      <p class="settings-hint">
++        Connecte-toi à un serveur StudyIDE lancé sur ton réseau local (même
++        Wi-Fi, ex : à l'IUT) pour discuter et échanger des fichiers — y
++        compris des <code>.zip</code> — avec d'autres personnes qui ont un
++        compte.
++      </p>
++      <label>Adresse du serveur</label>
++      <input type="text" id="chatServerInput" placeholder="ex : 192.168.1.42:4321" />
++
++      <label>Pseudo</label>
++      <input type="text" id="chatPseudoInput" placeholder="Ton pseudo" maxlength="40" />
++
++      <label>Mot de passe</label>
++      <input type="password" id="chatPasswordInput" placeholder="Mot de passe" />
++
++      <div class="chat-auth-actions">
++        <button class="btn-primary" id="chatLoginBtn">Se connecter</button>
++        <button class="btn-ghost" id="chatRegisterBtn">Créer un compte</button>
++      </div>
++      <p class="chat-auth-status" id="chatAuthStatus"></p>
++    </div>
++
++    <!-- Salon de chat -->
++    <div class="chat-room hidden" id="chatRoomPanel">
++      <div class="chat-users" id="chatUsersBar">— personne d'autre en ligne —</div>
++      <main class="ia-area">
++        <div class="ia-messages" id="chatMessages">
++          <div class="ia-welcome" id="chatWelcome">
++            👋 Tu es connecté. Écris un message ou joins un fichier (même un
++            <code>.zip</code>) — tout le monde de connecté au serveur le
++            reçoit en direct.
++          </div>
++        </div>
++        <div class="ia-input-bar">
++          <button class="btn-ghost chat-attach-btn" id="chatAttachBtn" title="Joindre un fichier (zip, doc, image…)">📎</button>
++          <input type="file" id="chatFileInput" class="hidden" />
++          <textarea id="chatInput" placeholder="Écris ton message... (Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne)"></textarea>
++          <button class="btn-primary" id="chatSendBtn">Envoyer</button>
++        </div>
++      </main>
++    </div>
++  </aside>
++
+   <!-- Modale : réglages IA -->
+   <div class="modal-overlay" id="iaSettingsOverlay">
+     <div class="modal modal-md">
+@@ -334,6 +393,16 @@
+ 
+       <hr class="settings-sep-visible" />
+ 
++      <div class="app-settings-section">
++        <label class="ia-context-toggle">
++          <input type="checkbox" id="iaNotifCheckbox" checked />
++          🔔 Me notifier quand l'IA a fini de répondre (si la fenêtre est en arrière-plan)
++        </label>
++        <p class="settings-hint">Une notification système s'affiche dès que la réponse est prête, si tu as changé de fenêtre ou minimisé StudyIDE. Clique dessus pour revenir directement à la conversation.</p>
++      </div>
++
++      <hr class="settings-sep-visible" />
++
+       <div class="app-settings-section">
+         <h4 class="settings-subtitle">📥 Sauvegarder / exporter mes données</h4>
+         <p class="settings-hint">Copie tout ton dossier de travail (exercices, cours importés, notes, calcul BUT) vers un dossier de ton choix — pratique pour une sauvegarde ou changer d'ordinateur.</p>
+diff --git a/renderer/renderer.js b/renderer/renderer.js
+index ac619be..3b36e73 100644
+--- a/renderer/renderer.js
++++ b/renderer/renderer.js
+@@ -48,6 +48,7 @@ async function init() {
+   bindNotesEvents();
+   bindButEvents();
+   bindAppSettingsEvents();
++  bindChatBubbleEvents();
+ }
+ 
+ function renderCourseList() {
+@@ -1180,6 +1181,52 @@ function appendAssistantMessage({ modeLabel, bodyHtml, sources }) {
+   });
+   el('iaMessages').appendChild(wrap);
+   el('iaMessages').scrollTop = el('iaMessages').scrollHeight;
++  notifyIaResponseIfBackground(modeLabel, wrap.querySelector('.ia-bubble').textContent);
++}
++
++// =====================================================================
++// NOTIFICATIONS SYSTÈME : prévenir quand l'IA a fini de répondre
++// et que la fenêtre est en arrière-plan (pas au premier plan / masquée)
++// =====================================================================
++
++async function ensureNotificationPermission() {
++  if (typeof Notification === 'undefined') return false;
++  if (Notification.permission === 'granted') return true;
++  if (Notification.permission === 'denied') return false;
++  try {
++    const perm = await Notification.requestPermission();
++    return perm === 'granted';
++  } catch (e) {
++    return false;
++  }
++}
++
++async function notifyIaResponseIfBackground(modeLabel, plainText) {
++  try {
++    if (typeof Notification === 'undefined') return;
++    // On ne notifie que si l'appli n'est pas au premier plan (autre fenêtre active, ou masquée dans le tray)
++    if (document.hasFocus() && !document.hidden) return;
++
++    const settings = await window.studyide.getSettings();
++    if (settings.iaNotifications === false) return;
++
++    const ok = await ensureNotificationPermission();
++    if (!ok) return;
++
++    const excerpt = (plainText || '').trim().replace(/\s+/g, ' ').slice(0, 140);
++    const notif = new Notification('StudyIDE — L\'IA a fini de répondre', {
++      body: excerpt || modeLabel || 'Ta réponse est prête.',
++      silent: false
++    });
++    notif.onclick = () => {
++      window.studyide.focusWindow();
++      window.focus();
++      notif.close();
++    };
++  } catch (e) {
++    // Silencieux : une notification ratée ne doit jamais casser le chat IA
++    console.error('Notification IA impossible :', e);
++  }
+ }
+ 
+ function answerOffline(question, results) {
+@@ -1616,6 +1663,7 @@ function bindButEvents() {
+ async function openAppSettingsModal() {
+   const s = await window.studyide.getSettings();
+   el('minimizeToTrayCheckbox').checked = s.minimizeToTray !== false;
++  el('iaNotifCheckbox').checked = s.iaNotifications !== false;
+   el('exportStatus').textContent = '';
+   el('exportStatus').className = 'export-status';
+   el('shortcutStatus').textContent = '';
+@@ -1632,6 +1680,12 @@ function bindAppSettingsEvents() {
+     await window.studyide.setSettings({ ...s, minimizeToTray: e.target.checked });
+   };
+ 
++  el('iaNotifCheckbox').onchange = async (e) => {
++    if (e.target.checked) await ensureNotificationPermission();
++    const s = await window.studyide.getSettings();
++    await window.studyide.setSettings({ ...s, iaNotifications: e.target.checked });
++  };
++
+   el('exportDataBtn').onclick = async (e) => {
+     const btn = e.currentTarget;
+     const original = btn.textContent;
+@@ -1672,4 +1726,268 @@ function bindAppSettingsEvents() {
+   };
+ }
+ 
++// =====================================================================
++// CHAT LAN — comptes, connexion, salon commun, envoi de fichiers/zip
++// =====================================================================
++
++let chatDrawerOpen = false;
++let chatWs = null;
++let chatConnectedPseudo = null;
++let chatPendingIncomingFile = null; // {from, name, size, mime, ts} en attente du frame binaire suivant
++
++function openChatDrawer() {
++  chatDrawerOpen = true;
++  el('chatDrawer').classList.add('open');
++  el('chatDrawerOverlay').classList.add('open');
++  el('chatBubbleBtn').classList.add('active');
++
++  const savedServer = localStorage.getItem('studyide_chat_server');
++  const savedPseudo = localStorage.getItem('studyide_chat_pseudo');
++  if (savedServer && !el('chatServerInput').value) el('chatServerInput').value = savedServer;
++  if (savedPseudo && !el('chatPseudoInput').value) el('chatPseudoInput').value = savedPseudo;
++}
++
++function closeChatDrawer() {
++  chatDrawerOpen = false;
++  el('chatDrawer').classList.remove('open');
++  el('chatDrawerOverlay').classList.remove('open');
++  el('chatBubbleBtn').classList.remove('active');
++}
++
++function setChatAuthStatus(text, isError) {
++  const s = el('chatAuthStatus');
++  s.textContent = text || '';
++  s.className = 'chat-auth-status' + (isError ? ' err' : '');
++}
++
++function chatServerUrl() {
++  const raw = el('chatServerInput').value.trim().replace(/^ws:\/\//, '').replace(/\/$/, '');
++  return raw;
++}
++
++function connectChatSocket(onOpenCallback) {
++  const address = chatServerUrl();
++  if (!address) {
++    setChatAuthStatus('Entre l\'adresse du serveur (ex : 192.168.1.42:4321).', true);
++    return;
++  }
++  if (chatWs) {
++    try { chatWs.close(); } catch (e) {}
++    chatWs = null;
++  }
++  setChatAuthStatus('Connexion en cours…', false);
++  let socket;
++  try {
++    socket = new WebSocket(`ws://${address}`);
++  } catch (e) {
++    setChatAuthStatus('Adresse de serveur invalide.', true);
++    return;
++  }
++  socket.binaryType = 'arraybuffer';
++  chatWs = socket;
++
++  socket.onopen = () => {
++    setChatAuthStatus('Connecté au serveur ✅', false);
++    if (onOpenCallback) onOpenCallback();
++  };
++  socket.onerror = () => {
++    setChatAuthStatus('Impossible de joindre ce serveur. Vérifie l\'adresse et le réseau.', true);
++  };
++  socket.onclose = () => {
++    if (chatConnectedPseudo) {
++      appendChatSystem('Déconnecté du serveur.');
++    }
++    chatConnectedPseudo = null;
++    chatWs = null;
++    el('chatRoomPanel').classList.add('hidden');
++    el('chatAuthPanel').classList.remove('hidden');
++    el('chatLogoutBtn').classList.add('hidden');
++  };
++  socket.onmessage = (event) => handleChatSocketMessage(event);
++}
++
++function handleChatSocketMessage(event) {
++  // Frame binaire = contenu d'un fichier annoncé juste avant
++  if (event.data instanceof ArrayBuffer) {
++    if (!chatPendingIncomingFile) return;
++    const meta = chatPendingIncomingFile;
++    chatPendingIncomingFile = null;
++    const blob = new Blob([event.data], { type: meta.mime || 'application/octet-stream' });
++    const url = URL.createObjectURL(blob);
++    appendChatFile(meta.from, meta.name, meta.size, url, false);
++    return;
++  }
++
++  let msg;
++  try { msg = JSON.parse(event.data); } catch (e) { return; }
++
++  if (msg.type === 'register_err') { setChatAuthStatus(msg.message, true); return; }
++  if (msg.type === 'registered') {
++    setChatAuthStatus('Compte créé ✅ Connexion…', false);
++    chatWs.send(JSON.stringify({
++      type: 'login',
++      pseudo: el('chatPseudoInput').value.trim(),
++      password: el('chatPasswordInput').value
++    }));
++    return;
++  }
++  if (msg.type === 'login_err') { setChatAuthStatus(msg.message, true); return; }
++  if (msg.type === 'login_ok') {
++    chatConnectedPseudo = msg.pseudo;
++    localStorage.setItem('studyide_chat_server', chatServerUrl());
++    localStorage.setItem('studyide_chat_pseudo', msg.pseudo);
++    el('chatAuthPanel').classList.add('hidden');
++    el('chatRoomPanel').classList.remove('hidden');
++    el('chatLogoutBtn').classList.remove('hidden');
++    setChatAuthStatus('', false);
++    return;
++  }
++  if (msg.type === 'users') {
++    const others = msg.list.filter((p) => p !== chatConnectedPseudo);
++    el('chatUsersBar').textContent = others.length
++      ? `🟢 En ligne : ${others.join(', ')}`
++      : '— personne d\'autre en ligne pour le moment —';
++    return;
++  }
++  if (msg.type === 'chat') {
++    appendChatMessage(msg.from, msg.text, msg.from === chatConnectedPseudo);
++    return;
++  }
++  if (msg.type === 'system') {
++    appendChatSystem(msg.text);
++    return;
++  }
++  if (msg.type === 'file_start') {
++    chatPendingIncomingFile = msg;
++    return;
++  }
++  if (msg.type === 'error') {
++    appendChatSystem(`⚠ ${msg.message}`);
++    return;
++  }
++}
++
++function appendChatMessage(from, text, self) {
++  el('chatWelcome') && el('chatWelcome').remove();
++  const wrap = document.createElement('div');
++  wrap.className = 'ia-msg ' + (self ? 'user' : 'assistant');
++  const badge = document.createElement('div');
++  badge.className = 'ia-badge-mode';
++  badge.textContent = self ? 'Toi' : from;
++  const bubble = document.createElement('div');
++  bubble.className = 'ia-bubble';
++  bubble.textContent = text;
++  wrap.appendChild(badge);
++  wrap.appendChild(bubble);
++  el('chatMessages').appendChild(wrap);
++  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
++}
++
++function appendChatSystem(text) {
++  el('chatWelcome') && el('chatWelcome').remove();
++  const div = document.createElement('div');
++  div.className = 'chat-system-line';
++  div.textContent = text;
++  el('chatMessages').appendChild(div);
++  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
++}
++
++function appendChatFile(from, name, size, url, self) {
++  el('chatWelcome') && el('chatWelcome').remove();
++  const wrap = document.createElement('div');
++  wrap.className = 'ia-msg ' + (self ? 'user' : 'assistant');
++  const badge = document.createElement('div');
++  badge.className = 'ia-badge-mode';
++  badge.textContent = self ? 'Toi' : from;
++  const chip = document.createElement('a');
++  chip.className = 'chat-file-chip';
++  chip.href = url;
++  chip.download = name;
++  const isZip = /\.zip$/i.test(name);
++  chip.innerHTML = `<span class="cf-icon">${isZip ? '🗜' : '📎'}</span><span class="cf-name">${escapeHtml(name)}</span><span class="cf-size">${formatFileSize(size)} · télécharger</span>`;
++  wrap.appendChild(badge);
++  wrap.appendChild(chip);
++  el('chatMessages').appendChild(wrap);
++  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
++}
++
++function formatFileSize(bytes) {
++  if (bytes < 1024) return `${bytes} o`;
++  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
++  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
++}
++
++function sendChatMessage() {
++  const text = el('chatInput').value.trim();
++  if (!text || !chatWs || chatWs.readyState !== WebSocket.OPEN) return;
++  chatWs.send(JSON.stringify({ type: 'chat', text }));
++  appendChatMessage(chatConnectedPseudo, text, true);
++  el('chatInput').value = '';
++}
++
++function sendChatFile(file) {
++  if (!chatWs || chatWs.readyState !== WebSocket.OPEN) return;
++  if (file.size > 50 * 1024 * 1024) {
++    appendChatSystem('⚠ Fichier trop volumineux (max 50 Mo).');
++    return;
++  }
++  const reader = new FileReader();
++  reader.onload = () => {
++    chatWs.send(JSON.stringify({ type: 'file_start', name: file.name, size: file.size, mime: file.type }));
++    chatWs.send(reader.result);
++    appendChatFile(chatConnectedPseudo, file.name, file.size, URL.createObjectURL(file), true);
++  };
++  reader.readAsArrayBuffer(file);
++}
++
++function bindChatBubbleEvents() {
++  el('chatBubbleBtn').onclick = () => { chatDrawerOpen ? closeChatDrawer() : openChatDrawer(); };
++  el('chatCloseDrawerBtn').onclick = closeChatDrawer;
++  el('chatDrawerOverlay').onclick = closeChatDrawer;
++
++  el('chatLoginBtn').onclick = () => {
++    const pseudo = el('chatPseudoInput').value.trim();
++    const password = el('chatPasswordInput').value;
++    if (!pseudo || !password) { setChatAuthStatus('Pseudo et mot de passe requis.', true); return; }
++    connectChatSocket(() => {
++      chatWs.send(JSON.stringify({ type: 'login', pseudo, password }));
++    });
++  };
++
++  el('chatRegisterBtn').onclick = () => {
++    const pseudo = el('chatPseudoInput').value.trim();
++    const password = el('chatPasswordInput').value;
++    if (!pseudo || !password) { setChatAuthStatus('Pseudo et mot de passe requis.', true); return; }
++    connectChatSocket(() => {
++      chatWs.send(JSON.stringify({ type: 'register', pseudo, password }));
++    });
++  };
++
++  el('chatLogoutBtn').onclick = () => {
++    if (chatWs) { try { chatWs.close(); } catch (e) {} }
++    chatWs = null;
++    chatConnectedPseudo = null;
++    el('chatMessages').innerHTML = '<div class="ia-welcome" id="chatWelcome">👋 Reconnecte-toi pour continuer à discuter.</div>';
++    el('chatRoomPanel').classList.add('hidden');
++    el('chatAuthPanel').classList.remove('hidden');
++    el('chatLogoutBtn').classList.add('hidden');
++    setChatAuthStatus('', false);
++  };
++
++  el('chatSendBtn').onclick = sendChatMessage;
++  el('chatInput').addEventListener('keydown', (e) => {
++    if (e.key === 'Enter' && !e.shiftKey) {
++      e.preventDefault();
++      sendChatMessage();
++    }
++  });
++
++  el('chatAttachBtn').onclick = () => el('chatFileInput').click();
++  el('chatFileInput').onchange = (e) => {
++    const file = e.target.files[0];
++    if (file) sendChatFile(file);
++    e.target.value = '';
++  };
++}
++
+ init();
+diff --git a/renderer/style.css b/renderer/style.css
+index 513b1df..6089b7d 100644
+--- a/renderer/style.css
++++ b/renderer/style.css
+@@ -1,29 +1,45 @@
++/* =====================================================================
++   StudyIDE — thème "circuit" : dark tech, cyan/indigo, glassmorphism
++===================================================================== */
++
+ :root {
+-  --bg-0: #0c0e14;
+-  --bg-1: #12141c;
+-  --bg-2: #191c27;
+-  --bg-3: #212533;
+-  --bg-4: #2a2f40;
+-  --line: #272c3a;
+-  --line-soft: #1d2029;
+-  --text-hi: #f1f3f9;
+-  --text-mid: #99a0b8;
+-  --text-low: #5e6479;
+-  --accent: #5eead4;
+-  --accent-hi: #9bf5e4;
+-  --accent-dim: #1f4d45;
+-  --run: #f0a15c;
+-  --run-dim: #5c3b1f;
+-  --violet: #b9a3ff;
+-  --violet-dim: #362a5c;
+-  --danger: #f2726b;
+-  --danger-dim: #4a2224;
+-  --radius: 10px;
+-  --radius-sm: 7px;
+-  --radius-lg: 14px;
+-  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
++  /* Fond en couches, teinte bleu-nuit légèrement violine */
++  --bg-0: #08090d;
++  --bg-1: #0d0f16;
++  --bg-2: #141826;
++  --bg-3: #1b2032;
++  --bg-4: #262c42;
++  --line: #232a40;
++  --line-soft: #171b2a;
++  --text-hi: #f4f6fc;
++  --text-mid: #98a1c2;
++  --text-low: #565e7d;
++
++  /* Accent principal : cyan électrique -> indigo (identité "circuit") */
++  --accent: #4fe3ff;
++  --accent-2: #7c8cff;
++  --accent-hi: #b8f4ff;
++  --accent-dim: #103246;
++  --accent-grad: linear-gradient(135deg, #4fe3ff 0%, #7c8cff 100%);
++
++  --run: #ffab5c;
++  --run-dim: #3f2712;
++  --violet: #c3a9ff;
++  --violet-dim: #2a2350;
++  --danger: #ff6b7a;
++  --danger-dim: #3a1620;
++
++  --radius: 11px;
++  --radius-sm: 8px;
++  --radius-lg: 16px;
++  --ease: cubic-bezier(0.16, 0.8, 0.24, 1);
+   --mono: "JetBrains Mono", "Cascadia Code", Consolas, "SF Mono", monospace;
+-  --sans: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
++  --sans: "Inter", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
++
++  --shadow-sm: 0 2px 8px rgba(0,0,0,0.35);
++  --shadow-md: 0 10px 30px rgba(0,0,0,0.45);
++  --shadow-lg: 0 24px 70px rgba(0,0,0,0.55);
++  --glow-accent: 0 0 0 1px rgba(79,227,255,0.16), 0 8px 24px rgba(79,227,255,0.12);
+ }
+ 
+ * { box-sizing: border-box; }
+@@ -36,6 +52,17 @@ html, body {
+   font-family: var(--sans);
+   overflow: hidden;
+   -webkit-font-smoothing: antialiased;
++  text-rendering: optimizeLegibility;
++}
++
++/* Texture "circuit" discrète en fond, sans réseau (pur CSS) */
++body {
++  background-image:
++    radial-gradient(circle at 1px 1px, rgba(124,140,255,0.08) 1px, transparent 1.6px),
++    radial-gradient(1100px 620px at 85% -10%, rgba(79,227,255,0.05), transparent 60%),
++    radial-gradient(900px 500px at -5% 110%, rgba(124,140,255,0.05), transparent 55%);
++  background-size: 26px 26px, auto, auto;
++  background-position: 0 0, 0 0, 0 0;
+ }
+ 
+ :focus-visible {
+@@ -53,7 +80,7 @@ html, body {
+ 
+ #app {
+   display: grid;
+-  grid-template-columns: 240px 1fr;
++  grid-template-columns: 246px 1fr;
+   height: 100vh;
+ }
+ 
+@@ -74,27 +101,27 @@ html, body {
+ }
+ .mode-btn {
+   flex: 1;
+-  padding: 8px 6px;
++  padding: 9px 6px;
+   background: var(--bg-2);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   color: var(--text-mid);
+   font-size: 12px;
+   font-weight: 600;
+   cursor: pointer;
+-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
++  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease), transform 0.12s var(--ease);
+ }
+-.mode-btn:hover { color: var(--text-hi); }
++.mode-btn:hover { color: var(--text-hi); border-color: var(--bg-4); transform: translateY(-1px); }
+ .mode-btn.active {
+-  background: var(--bg-3);
++  background: linear-gradient(160deg, var(--bg-3), var(--bg-2));
+   color: var(--text-hi);
+-  border-color: var(--accent-dim);
+-  box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.12);
++  border-color: rgba(79,227,255,0.35);
++  box-shadow: inset 0 0 0 1px rgba(79,227,255,0.1), 0 4px 14px rgba(79,227,255,0.08);
+ }
+ 
+ /* ---------- Sidebar ---------- */
+ .sidebar {
+-  background: var(--bg-1);
++  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+   border-right: 1px solid var(--line);
+   display: flex;
+   flex-direction: column;
+@@ -111,20 +138,25 @@ html, body {
+   border-bottom: 1px solid var(--line);
+ }
+ .brand-mark {
+-  width: 32px; height: 32px;
+-  border-radius: 9px;
++  width: 34px; height: 34px;
++  border-radius: 10px;
+   background: linear-gradient(160deg, var(--bg-3), var(--bg-1));
+-  border: 1px solid var(--line);
++  border: 1px solid rgba(79,227,255,0.25);
++  box-shadow: 0 0 0 1px rgba(79,227,255,0.05), 0 4px 14px rgba(79,227,255,0.1);
+   display: flex; align-items: center; justify-content: center;
+   flex-shrink: 0;
+ }
+ .brand-mark svg { display: block; }
+ .brand-mark circle { fill: var(--accent); }
+-.brand-mark circle.dim { fill: var(--accent-dim); }
++.brand-mark circle.dim { fill: var(--accent-2); opacity: 0.45; }
+ .brand-name {
+-  font-weight: 700;
+-  letter-spacing: 0.2px;
+-  font-size: 14px;
++  font-weight: 800;
++  letter-spacing: 0.1px;
++  font-size: 14.5px;
++  background: var(--accent-grad);
++  -webkit-background-clip: text;
++  background-clip: text;
++  -webkit-text-fill-color: transparent;
+ }
+ .brand-sub {
+   display: block;
+@@ -132,7 +164,8 @@ html, body {
+   font-weight: 500;
+   color: var(--text-low);
+   letter-spacing: 0.03em;
+-  margin-top: 1px;
++  margin-top: 2px;
++  font-family: var(--mono);
+ }
+ 
+ .env-status {
+@@ -142,15 +175,17 @@ html, body {
+   display: flex;
+   gap: 12px;
+   border-bottom: 1px solid var(--line);
++  font-family: var(--mono);
+ }
+ .dot {
+   display: inline-block;
+-  width: 8px; height: 8px;
++  width: 7px; height: 7px;
+   border-radius: 50%;
+   background: var(--danger);
+-  margin-right: 4px;
++  margin-right: 5px;
++  box-shadow: 0 0 6px rgba(255,107,122,0.5);
+ }
+-.dot.ok { background: var(--accent); }
++.dot.ok { background: var(--accent); box-shadow: 0 0 6px rgba(79,227,255,0.65); }
+ 
+ .sidebar-scroll {
+   flex: 1;
+@@ -160,20 +195,20 @@ html, body {
+ 
+ .course-item {
+   position: relative;
+-  padding: 9px 10px 9px 13px;
+-  border-radius: 8px;
++  padding: 9px 10px 9px 14px;
++  border-radius: var(--radius-sm);
+   cursor: pointer;
+   font-size: 13px;
+   color: var(--text-mid);
+   margin-bottom: 2px;
+   line-height: 1.35;
+   border: 1px solid transparent;
+-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
++  transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
+ }
+-.course-item:hover { background: var(--bg-2); color: var(--text-hi); }
++.course-item:hover { background: var(--bg-2); color: var(--text-hi); transform: translateX(1px); }
+ .course-item.active {
+-  background: var(--bg-3);
+-  border-color: var(--line);
++  background: linear-gradient(120deg, rgba(79,227,255,0.09), rgba(124,140,255,0.06));
++  border-color: rgba(79,227,255,0.22);
+   color: var(--text-hi);
+ }
+ .course-item.active::before {
+@@ -182,7 +217,8 @@ html, body {
+   left: 0; top: 8px; bottom: 8px;
+   width: 3px;
+   border-radius: 3px;
+-  background: var(--accent);
++  background: var(--accent-grad);
++  box-shadow: 0 0 8px rgba(79,227,255,0.6);
+ }
+ .course-item .code {
+   display: block;
+@@ -202,9 +238,10 @@ html, body {
+   border-radius: var(--radius);
+   cursor: pointer;
+   font-size: 12px;
+-  transition: color 0.15s var(--ease), border-color 0.15s var(--ease);
++  font-weight: 600;
++  transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease);
+ }
+-.btn-workspace:hover { color: var(--text-hi); border-color: var(--accent-dim); }
++.btn-workspace:hover { color: var(--text-hi); border-color: rgba(79,227,255,0.35); background: var(--bg-3); }
+ 
+ /* ---------- Exercises panel ---------- */
+ .exercises-panel {
+@@ -219,11 +256,12 @@ html, body {
+ .panel-header {
+   padding: 16px;
+   border-bottom: 1px solid var(--line);
++  background: linear-gradient(180deg, rgba(124,140,255,0.03), transparent);
+ }
+ .panel-header h2 {
+   margin: 0 0 10px 0;
+   font-size: 14px;
+-  font-weight: 600;
++  font-weight: 700;
+   color: var(--text-hi);
+   white-space: nowrap;
+   overflow: hidden;
+@@ -231,17 +269,18 @@ html, body {
+ }
+ .btn-primary {
+   width: 100%;
+-  padding: 9px;
+-  background: var(--accent);
+-  color: #04140f;
++  padding: 10px;
++  background: var(--accent-grad);
++  color: #04141c;
+   border: none;
+   border-radius: var(--radius);
+   font-weight: 700;
+   font-size: 12px;
+   cursor: pointer;
+-  transition: filter 0.15s var(--ease), transform 0.1s var(--ease);
++  box-shadow: 0 6px 18px rgba(79,227,255,0.18);
++  transition: filter 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+ }
+-.btn-primary:hover { filter: brightness(1.1); }
++.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 8px 22px rgba(79,227,255,0.28); }
+ .btn-primary:active { transform: scale(0.98); }
+ 
+ .exercise-list {
+@@ -254,10 +293,10 @@ html, body {
+   background: var(--bg-1);
+   border: 1px solid var(--line);
+   border-radius: var(--radius);
+-  padding: 10px 12px 10px 15px;
++  padding: 10px 12px 10px 16px;
+   margin-bottom: 8px;
+   cursor: pointer;
+-  transition: border-color 0.15s var(--ease), background 0.15s var(--ease), transform 0.1s var(--ease);
++  transition: border-color 0.15s var(--ease), background 0.15s var(--ease), transform 0.12s var(--ease), box-shadow 0.15s var(--ease);
+ }
+ .exercise-card::before {
+   content: "";
+@@ -267,11 +306,11 @@ html, body {
+   border-radius: 3px;
+   background: var(--line);
+ }
+-.exercise-card[data-status="todo"]::before { background: var(--violet); opacity: 0.55; }
++.exercise-card[data-status="todo"]::before { background: var(--violet); opacity: 0.6; }
+ .exercise-card[data-status="in-progress"]::before { background: var(--run); }
+-.exercise-card[data-status="done"]::before { background: var(--accent); }
+-.exercise-card:hover { border-color: var(--accent-dim); }
+-.exercise-card.selected { border-color: var(--accent-dim); background: var(--bg-2); }
++.exercise-card[data-status="done"]::before { background: var(--accent-grad); }
++.exercise-card:hover { border-color: rgba(79,227,255,0.3); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
++.exercise-card.selected { border-color: rgba(79,227,255,0.4); background: var(--bg-2); box-shadow: var(--glow-accent); }
+ .exercise-card .name {
+   font-size: 13px;
+   font-weight: 600;
+@@ -294,7 +333,7 @@ html, body {
+   letter-spacing: 0.01em;
+ }
+ .badge.todo { background: var(--violet-dim); color: var(--violet); }
+-.badge.in-progress { background: var(--run-dim); color: #ffd0a0; }
++.badge.in-progress { background: var(--run-dim); color: #ffcb9a; }
+ .badge.done { background: var(--accent-dim); color: var(--accent-hi); }
+ .del-ex {
+   background: none; border: none; color: var(--text-low); cursor: pointer; font-size: 13px;
+@@ -333,7 +372,7 @@ html, body {
+   background: var(--bg-2);
+   color: var(--text-mid);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 6px 8px;
+   font-size: 12px;
+   transition: border-color 0.15s var(--ease);
+@@ -341,26 +380,27 @@ html, body {
+ 
+ .btn-run, .btn-save, .btn-ghost {
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 7px 12px;
+   font-size: 12px;
+   cursor: pointer;
+   background: var(--bg-2);
+   color: var(--text-hi);
+-  transition: filter 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
++  transition: filter 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+ }
+ .btn-run {
+-  background: linear-gradient(160deg, var(--run), #d8863f);
++  background: linear-gradient(150deg, var(--run), #e8823f);
+   border-color: var(--run);
+   color: #221302;
+   font-weight: 700;
++  box-shadow: 0 6px 16px rgba(255,171,92,0.18);
+ }
+-.btn-run:hover:not(:disabled) { filter: brightness(1.08); }
++.btn-run:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 8px 20px rgba(255,171,92,0.28); }
+ .btn-run:active:not(:disabled) { transform: scale(0.98); }
+-.btn-save:hover:not(:disabled) { border-color: var(--accent-dim); }
++.btn-save:hover:not(:disabled) { border-color: rgba(79,227,255,0.35); }
+ .btn-run:disabled, .btn-save:disabled, .status-select:disabled { opacity: 0.4; cursor: not-allowed; }
+ .btn-ghost { background: transparent; color: var(--text-low); }
+-.btn-ghost:hover { color: var(--text-hi); }
++.btn-ghost:hover { color: var(--text-hi); border-color: var(--bg-4); }
+ 
+ .editor-host {
+   flex: 1;
+@@ -376,7 +416,7 @@ html, body {
+ .output-panel {
+   height: 220px;
+   border-top: 1px solid var(--line);
+-  background: #08090e;
++  background: #06070b;
+   display: flex;
+   flex-direction: column;
+ }
+@@ -387,7 +427,7 @@ html, body {
+   padding: 8px 14px;
+   font-size: 11px;
+   text-transform: uppercase;
+-  letter-spacing: 0.06em;
++  letter-spacing: 0.08em;
+   color: var(--text-low);
+   border-bottom: 1px solid var(--line);
+ }
+@@ -398,7 +438,7 @@ html, body {
+   overflow-y: auto;
+   font-family: var(--mono);
+   font-size: 12.5px;
+-  color: #cfe8dc;
++  color: #b9f3e0;
+   white-space: pre-wrap;
+ }
+ .output-content.error { color: #ffb4b4; }
+@@ -406,49 +446,54 @@ html, body {
+ /* ---------- Modal ---------- */
+ .modal-overlay {
+   position: fixed; inset: 0;
+-  background: rgba(6,7,12,0.7);
+-  backdrop-filter: blur(3px);
++  background: rgba(4,5,9,0.72);
++  backdrop-filter: blur(6px);
+   display: none;
+   align-items: center; justify-content: center;
+   z-index: 50;
+ }
+-.modal-overlay.open { display: flex; animation: modal-fade 0.15s var(--ease); }
++.modal-overlay.open { display: flex; animation: modal-fade 0.18s var(--ease); }
+ @keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+ .modal {
+-  background: var(--bg-1);
++  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+   border: 1px solid var(--line);
+-  border-radius: 12px;
+-  padding: 20px;
++  border-radius: var(--radius-lg);
++  padding: 22px;
+   width: 340px;
+-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
++  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(79,227,255,0.04);
+ }
+-.modal h3 { margin: 0 0 14px 0; font-size: 15px; }
+-.modal label { display: block; font-size: 11px; color: var(--text-low); margin: 10px 0 6px; }
++.modal h3 { margin: 0 0 14px 0; font-size: 15px; font-weight: 700; }
++.modal label { display: block; font-size: 11px; color: var(--text-low); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+ .modal input {
+   width: 100%;
+   padding: 9px 10px;
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   color: var(--text-hi);
+   font-size: 13px;
++  outline: none;
++  transition: border-color 0.15s var(--ease);
+ }
++.modal input:focus { border-color: rgba(79,227,255,0.45); }
+ .lang-choice { display: flex; gap: 8px; }
+ .lang-btn {
+   flex: 1;
+   padding: 8px;
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   color: var(--text-mid);
+   cursor: pointer;
+   font-size: 12px;
++  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease);
+ }
+-.lang-btn.active { border-color: var(--accent); color: var(--text-hi); background: var(--bg-3); }
++.lang-btn.active { border-color: var(--accent); color: var(--text-hi); background: var(--bg-3); box-shadow: var(--glow-accent); }
+ .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+ 
+-::-webkit-scrollbar { width: 8px; height: 8px; }
+-::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 8px; }
++::-webkit-scrollbar { width: 9px; height: 9px; }
++::-webkit-scrollbar-thumb { background: var(--bg-4); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
++::-webkit-scrollbar-thumb:hover { background: #333a55; background-clip: padding-box; }
+ ::-webkit-scrollbar-track { background: transparent; }
+ 
+ /* ---------- Documents (mode Cours) ---------- */
+@@ -459,10 +504,10 @@ html, body {
+   padding: 10px 12px;
+   margin-bottom: 8px;
+   cursor: pointer;
+-  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
++  transition: border-color 0.15s var(--ease), background 0.15s var(--ease), transform 0.12s var(--ease);
+ }
+-.doc-card:hover { border-color: var(--accent-dim); }
+-.doc-card.selected { border-color: var(--accent-dim); background: var(--bg-2); }
++.doc-card:hover { border-color: rgba(79,227,255,0.3); transform: translateY(-1px); }
++.doc-card.selected { border-color: rgba(79,227,255,0.4); background: var(--bg-2); box-shadow: var(--glow-accent); }
+ .doc-card .name { font-size: 13px; font-weight: 600; color: var(--text-hi); margin-bottom: 4px; overflow-wrap: anywhere; }
+ .doc-card .meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-low); }
+ 
+@@ -481,7 +526,7 @@ html, body {
+   border-bottom: 1px solid var(--line);
+   background: var(--bg-1);
+ }
+-.zoom-label { font-size: 12px; color: var(--text-mid); min-width: 40px; text-align: center; }
++.zoom-label { font-size: 12px; color: var(--text-mid); min-width: 40px; text-align: center; font-family: var(--mono); }
+ 
+ .cours-split {
+   flex: 1;
+@@ -491,7 +536,7 @@ html, body {
+ }
+ .pdf-viewport {
+   overflow-y: auto;
+-  background: #0b0c11;
++  background: #07080c;
+   padding: 20px;
+   display: flex;
+   flex-direction: column;
+@@ -500,8 +545,9 @@ html, body {
+ }
+ .pdf-empty { color: var(--text-low); font-size: 13px; margin-top: 40px; }
+ .pdf-viewport canvas {
+-  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+-  border-radius: 4px;
++  box-shadow: 0 10px 34px rgba(0,0,0,0.55);
++  border-radius: 6px;
++  border: 1px solid var(--line);
+ }
+ .page-number-tag {
+   font-family: var(--mono);
+@@ -529,13 +575,14 @@ html, body {
+ .pdf-ex-item {
+   background: var(--bg-2);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 9px 10px;
+   margin-bottom: 8px;
+   cursor: pointer;
+   font-size: 12.5px;
++  transition: border-color 0.15s var(--ease), transform 0.12s var(--ease);
+ }
+-.pdf-ex-item:hover { border-color: var(--accent-dim); }
++.pdf-ex-item:hover { border-color: rgba(79,227,255,0.3); transform: translateY(-1px); }
+ .pdf-ex-item .num { color: var(--accent); font-family: var(--mono); font-size: 11px; }
+ .pdf-ex-item .title { color: var(--text-hi); margin-top: 3px; overflow-wrap: anywhere; }
+ .pdf-ex-item .meta-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+@@ -561,9 +608,9 @@ html, body {
+ }
+ .pdf-ex-col h4:first-child { margin-top: 0; }
+ .pdf-ex-statement, .pdf-ex-solution {
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 10px 12px;
+   font-size: 12.5px;
+   line-height: 1.55;
+@@ -571,7 +618,7 @@ html, body {
+   white-space: pre-wrap;
+   overflow-wrap: anywhere;
+ }
+-.pdf-ex-solution { color: #cfe8dc; }
++.pdf-ex-solution { color: #cdeee0; }
+ .pdf-ex-solution code, .pdf-ex-statement code {
+   font-family: var(--mono);
+   background: var(--bg-3);
+@@ -590,41 +637,44 @@ html, body {
+ #pdfExUserNotes {
+   width: 100%;
+   min-height: 90px;
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   color: var(--text-hi);
+   padding: 10px 12px;
+   font-size: 12.5px;
+   font-family: var(--sans);
+   resize: vertical;
++  outline: none;
++  transition: border-color 0.15s var(--ease);
+ }
++#pdfExUserNotes:focus { border-color: rgba(79,227,255,0.4); }
+ 
+ /* ---------- Mode IA ---------- */
+ /* ---------- Bulle IA flottante + tiroir ---------- */
+ .ia-bubble-btn {
+   position: fixed;
+-  top: 18px;
+-  right: 22px;
+-  width: 54px;
+-  height: 54px;
++  bottom: 26px;
++  right: 26px;
++  width: 56px;
++  height: 56px;
+   border-radius: 50%;
+   border: none;
+-  background: linear-gradient(150deg, var(--accent-hi), var(--accent-dim));
+-  color: #04140f;
++  background: var(--accent-grad);
++  color: #04141c;
+   font-size: 24px;
+   cursor: pointer;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(94, 234, 212, 0.4);
++  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 0 0 rgba(79,227,255,0.4);
+   z-index: 200;
+   transition: transform 0.15s var(--ease), box-shadow 0.3s var(--ease);
+   animation: ia-breathe 4s ease-in-out infinite;
+ }
+ @keyframes ia-breathe {
+-  0%, 100% { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(94, 234, 212, 0.25); }
+-  50% { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 7px rgba(94, 234, 212, 0); }
++  0%, 100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(79,227,255,0.3); }
++  50% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 8px rgba(79,227,255,0); }
+ }
+ .ia-bubble-btn:hover { transform: scale(1.08); animation-play-state: paused; }
+ .ia-bubble-btn.active {
+@@ -637,7 +687,7 @@ html, body {
+ .ia-drawer-overlay {
+   position: fixed;
+   inset: 0;
+-  background: rgba(6, 7, 12, 0.35);
++  background: rgba(4, 5, 9, 0.4);
+   opacity: 0;
+   pointer-events: none;
+   transition: opacity 0.2s ease;
+@@ -652,15 +702,15 @@ html, body {
+   height: 100vh;
+   width: 440px;
+   max-width: 92vw;
+-  background: var(--bg-1);
++  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+   border-left: 1px solid var(--line);
+-  box-shadow: -12px 0 30px rgba(0, 0, 0, 0.45);
++  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5);
+   z-index: 190;
+   display: flex;
+   flex-direction: column;
+   min-height: 0;
+   transform: translateX(100%);
+-  transition: transform 0.25s ease;
++  transition: transform 0.28s var(--ease);
+ }
+ .ia-drawer.open { transform: translateX(0); }
+ 
+@@ -694,8 +744,8 @@ html, body {
+   margin: 10px 16px 0;
+   padding: 8px 12px;
+   background: var(--bg-2);
+-  border: 1px solid var(--accent-dim);
+-  border-radius: 10px;
++  border: 1px solid rgba(79,227,255,0.3);
++  border-radius: var(--radius);
+   font-size: 11.5px;
+   color: var(--accent);
+   overflow-wrap: anywhere;
+@@ -706,7 +756,7 @@ html, body {
+   font-size: 12.5px;
+   font-weight: 600;
+   color: var(--accent);
+-  background: var(--bg-2);
++  background: linear-gradient(120deg, rgba(79,227,255,0.08), rgba(124,140,255,0.05));
+   border-bottom: 1px solid var(--line);
+ }
+ .ia-status {
+@@ -722,13 +772,13 @@ html, body {
+   padding: 12px 16px;
+   border-bottom: 1px solid var(--line);
+ }
+-.ia-scope label { display: block; font-size: 11px; color: var(--text-low); margin-bottom: 6px; }
++.ia-scope label { display: block; font-size: 11px; color: var(--text-low); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+ .ia-scope select {
+   width: 100%;
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   color: var(--text-hi);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 8px;
+   font-size: 12.5px;
+ }
+@@ -767,13 +817,13 @@ html, body {
+ .ia-msg.assistant { align-self: flex-start; }
+ .ia-bubble {
+   padding: 12px 14px;
+-  border-radius: 12px;
++  border-radius: var(--radius);
+   font-size: 13px;
+   line-height: 1.6;
+   white-space: pre-wrap;
+   overflow-wrap: anywhere;
+ }
+-.ia-msg.user .ia-bubble { background: var(--accent-dim); color: #eafff5; border-bottom-right-radius: 4px; }
++.ia-msg.user .ia-bubble { background: linear-gradient(135deg, rgba(79,227,255,0.22), rgba(124,140,255,0.18)); color: #eafcff; border-bottom-right-radius: 4px; border: 1px solid rgba(79,227,255,0.25); }
+ .ia-msg.assistant .ia-bubble { background: var(--bg-2); border: 1px solid var(--line); color: var(--text-hi); border-bottom-left-radius: 4px; }
+ .ia-bubble code { font-family: var(--mono); background: var(--bg-3); padding: 1px 4px; border-radius: 4px; }
+ .ia-bubble pre { background: var(--bg-0); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-family: var(--mono); font-size: 11.5px; }
+@@ -784,11 +834,12 @@ html, body {
+   font-size: 11px;
+   background: var(--bg-3);
+   color: var(--accent);
+-  border: 1px solid var(--accent-dim);
+-  border-radius: 7px;
++  border: 1px solid rgba(79,227,255,0.3);
++  border-radius: var(--radius-sm);
+   cursor: pointer;
++  transition: background 0.15s var(--ease);
+ }
+-.ia-insert-code-btn:hover { background: var(--accent-dim); color: #eafff5; }
++.ia-insert-code-btn:hover { background: var(--accent-dim); color: var(--accent-hi); }
+ .ia-badge-mode {
+   font-size: 10px;
+   text-transform: uppercase;
+@@ -799,7 +850,7 @@ html, body {
+ .ia-sources {
+   background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 10px;
++  border-radius: var(--radius);
+   padding: 8px 12px;
+   font-size: 11.5px;
+   color: var(--text-mid);
+@@ -827,23 +878,24 @@ html, body {
+   resize: none;
+   min-height: 52px;
+   max-height: 260px;
+-  background: #10131a;
++  background: var(--bg-0);
+   border: 2px solid var(--line);
+-  border-radius: 16px;
++  border-radius: var(--radius-lg);
+   color: #ffffff;
+   caret-color: var(--accent);
+   padding: 15px 18px;
+   font-size: 15px;
+   line-height: 1.5;
+   font-family: var(--sans);
+-  transition: border-color 0.15s ease;
++  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+ }
+ .ia-input-bar textarea::placeholder {
+-  color: #9aa2b8;
++  color: #838ba8;
+ }
+ .ia-input-bar textarea:focus {
+   outline: none;
+   border-color: var(--accent);
++  box-shadow: var(--glow-accent);
+ }
+ .ia-input-bar .btn-primary {
+   flex: 0 0 auto;
+@@ -851,7 +903,7 @@ html, body {
+   align-self: flex-end;
+   padding: 15px 22px;
+   font-size: 13px;
+-  border-radius: 14px;
++  border-radius: var(--radius-lg);
+   white-space: nowrap;
+ }
+ 
+@@ -860,7 +912,7 @@ html, body {
+   margin-top: 10px;
+   background: var(--bg-2);
+   border: 1px solid var(--line);
+-  border-radius: 10px;
++  border-radius: var(--radius);
+   padding: 12px;
+ }
+ .local-ai-status { font-size: 12px; color: var(--text-mid); margin-bottom: 10px; }
+@@ -874,7 +926,7 @@ html, body {
+ .progress-bar-fill {
+   height: 100%;
+   width: 0%;
+-  background: var(--accent);
++  background: var(--accent-grad);
+   transition: width 0.2s ease;
+ }
+ .local-ai-actions { display: flex; gap: 8px; }
+@@ -883,12 +935,13 @@ html, body {
+ .model-option-card {
+   background: var(--bg-2);
+   border: 2px solid var(--line);
+-  border-radius: 10px;
++  border-radius: var(--radius);
+   padding: 12px;
+   margin-bottom: 10px;
+   cursor: pointer;
++  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+ }
+-.model-option-card.selected { border-color: var(--accent); background: var(--bg-3); }
++.model-option-card.selected { border-color: var(--accent); background: var(--bg-3); box-shadow: var(--glow-accent); }
+ .model-option-card .mo-head {
+   display: flex;
+   align-items: center;
+@@ -902,13 +955,13 @@ html, body {
+ .mo-download-btn, .mo-delete-btn {
+   font-size: 11px;
+   padding: 6px 10px;
+-  border-radius: 7px;
++  border-radius: var(--radius-sm);
+   border: 1px solid var(--line);
+   background: var(--bg-1);
+   color: var(--text-hi);
+   cursor: pointer;
+ }
+-.mo-download-btn { background: var(--accent); color: #08130f; border: none; font-weight: 700; }
++.mo-download-btn { background: var(--accent-grad); color: #04141c; border: none; font-weight: 700; }
+ .mo-delete-btn:hover { color: var(--danger); }
+ 
+ /* =====================================================================
+@@ -934,7 +987,7 @@ html, body {
+ }
+ .project-toolbar .btn-ghost {
+   border: 1px solid var(--line);
+-  border-radius: 7px;
++  border-radius: var(--radius-sm);
+   padding: 5px 9px;
+   font-size: 12px;
+ }
+@@ -1022,6 +1075,7 @@ html, body {
+ .project-tab .pt-dirty {
+   width: 6px; height: 6px; border-radius: 50%;
+   background: var(--accent); flex-shrink: 0;
++  box-shadow: 0 0 6px rgba(79,227,255,0.6);
+ }
+ .project-tab .pt-close {
+   background: none; border: none; color: var(--text-low); cursor: pointer;
+@@ -1031,7 +1085,7 @@ html, body {
+ 
+ .project-terminal-panel {
+   border-top: 1px solid var(--line);
+-  background: #08090e;
++  background: #06070b;
+   flex-shrink: 0;
+   display: flex;
+   flex-direction: column;
+@@ -1100,8 +1154,8 @@ html, body {
+   z-index: 300;
+   background: var(--bg-2);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
+-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
++  border-radius: var(--radius-sm);
++  box-shadow: var(--shadow-lg);
+   padding: 4px;
+   min-width: 160px;
+ }
+@@ -1126,8 +1180,8 @@ html, body {
+ 
+ .notes-bubble-btn {
+   position: fixed;
+-  top: 18px;
+-  right: 88px;
++  bottom: 96px;
++  right: 31px;
+   width: 46px;
+   height: 46px;
+   border-radius: 50%;
+@@ -1139,13 +1193,134 @@ html, body {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
++  box-shadow: var(--shadow-md);
+   z-index: 200;
+   transition: transform 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease);
+ }
+-.notes-bubble-btn:hover { transform: scale(1.07); border-color: var(--accent-dim); }
++.notes-bubble-btn:hover { transform: scale(1.08) translateX(-2px); border-color: rgba(79,227,255,0.35); }
+ .notes-bubble-btn.active { background: var(--bg-3); color: var(--accent); border-color: var(--accent); }
+ 
++/* =====================================================================
++   CHAT LAN — bulle flottante, connexion/inscription, salon, fichiers
++===================================================================== */
++
++.chat-bubble-btn {
++  position: fixed;
++  bottom: 166px;
++  right: 31px;
++  width: 46px;
++  height: 46px;
++  border-radius: 50%;
++  border: 1px solid var(--line);
++  background: var(--bg-2);
++  color: var(--text-hi);
++  font-size: 19px;
++  cursor: pointer;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  box-shadow: var(--shadow-md);
++  z-index: 200;
++  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease);
++}
++.chat-bubble-btn:hover { transform: scale(1.08) translateX(-2px); border-color: rgba(195,169,255,0.4); }
++.chat-bubble-btn.active { background: var(--bg-3); color: var(--violet); border-color: var(--violet); }
++
++.chat-auth {
++  padding: 4px 16px 16px;
++  display: flex;
++  flex-direction: column;
++  overflow-y: auto;
++}
++.chat-auth label {
++  display: block;
++  font-size: 11px;
++  color: var(--text-low);
++  margin: 12px 0 6px;
++  text-transform: uppercase;
++  letter-spacing: 0.04em;
++}
++.chat-auth input {
++  width: 100%;
++  padding: 9px 10px;
++  background: var(--bg-1);
++  border: 1px solid var(--line);
++  border-radius: var(--radius-sm);
++  color: var(--text-hi);
++  font-size: 13px;
++  outline: none;
++  transition: border-color 0.15s var(--ease);
++}
++.chat-auth input:focus { border-color: rgba(79,227,255,0.45); }
++.chat-auth code {
++  font-family: var(--mono);
++  background: var(--bg-2);
++  padding: 1px 5px;
++  border-radius: 4px;
++  color: var(--accent);
++}
++.chat-auth-actions { display: flex; gap: 8px; margin-top: 16px; }
++.chat-auth-actions .btn-primary, .chat-auth-actions .btn-ghost { flex: 1; padding: 9px; border-radius: var(--radius-sm); }
++.chat-auth-actions .btn-ghost { border: 1px solid var(--line); }
++.chat-auth-status {
++  min-height: 16px;
++  font-size: 12px;
++  color: var(--accent-hi);
++  margin-top: 10px;
++}
++.chat-auth-status.err { color: var(--danger); }
++
++.chat-room {
++  display: flex;
++  flex-direction: column;
++  flex: 1;
++  min-height: 0;
++}
++.chat-users {
++  padding: 8px 16px;
++  font-size: 11.5px;
++  color: var(--text-mid);
++  border-bottom: 1px solid var(--line);
++  background: var(--bg-1);
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.chat-system-line {
++  align-self: center;
++  font-size: 11px;
++  color: var(--text-low);
++  font-style: italic;
++  margin: 2px 0;
++}
++
++.chat-attach-btn { flex-shrink: 0; align-self: flex-end; padding: 15px 14px; border-radius: var(--radius-lg); }
++
++.chat-file-chip {
++  display: flex;
++  align-items: center;
++  gap: 9px;
++  background: var(--bg-2);
++  border: 1px solid rgba(124,140,255,0.3);
++  border-radius: var(--radius);
++  padding: 9px 12px;
++  text-decoration: none;
++  max-width: 320px;
++  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
++}
++.chat-file-chip:hover { border-color: var(--accent); background: var(--bg-3); }
++.chat-file-chip .cf-icon { font-size: 18px; flex-shrink: 0; }
++.chat-file-chip .cf-name {
++  font-size: 12.5px;
++  font-weight: 600;
++  color: var(--text-hi);
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  flex: 1;
++}
++.chat-file-chip .cf-size { font-size: 10.5px; color: var(--accent); white-space: nowrap; flex-shrink: 0; }
++
+ .notes-drawer-hint {
+   font-size: 11.5px;
+   color: var(--text-low);
+@@ -1165,16 +1340,16 @@ html, body {
+ .notes-search-row { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+ .notes-search-row input {
+   width: 100%;
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 8px 10px;
+   color: var(--text-hi);
+   font-size: 12.5px;
+   outline: none;
+   transition: border-color 0.15s var(--ease);
+ }
+-.notes-search-row input:focus { border-color: var(--accent-dim); }
++.notes-search-row input:focus { border-color: rgba(79,227,255,0.4); }
+ 
+ .notes-list { flex: 1; overflow-y: auto; padding: 10px 12px; }
+ .note-card {
+@@ -1235,7 +1410,7 @@ html, body {
+ .project-editor-toolbar .pet-hint { font-size: 10.5px; color: var(--text-low); margin-right: auto; }
+ .project-editor-toolbar .btn-ghost {
+   border: 1px solid var(--line);
+-  border-radius: 7px;
++  border-radius: var(--radius-sm);
+   padding: 5px 10px;
+   font-size: 11.5px;
+ }
+@@ -1258,7 +1433,7 @@ html, body {
+   background: var(--bg-2);
+   border: 1px solid var(--line);
+   color: var(--text-mid);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 8px 10px;
+   font-size: 12px;
+   font-weight: 600;
+@@ -1266,7 +1441,7 @@ html, body {
+   text-align: left;
+   transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease);
+ }
+-.quick-action-btn:hover { color: var(--text-hi); border-color: var(--accent-dim); background: var(--bg-3); }
++.quick-action-btn:hover { color: var(--text-hi); border-color: rgba(79,227,255,0.35); background: var(--bg-3); }
+ 
+ .but-modal-header {
+   display: flex;
+@@ -1284,9 +1459,9 @@ html, body {
+ }
+ .but-header-actions input {
+   flex: 1;
+-  background: var(--bg-2);
++  background: var(--bg-1);
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 7px 10px;
+   color: var(--text-hi);
+   font-size: 12px;
+@@ -1294,7 +1469,7 @@ html, body {
+ }
+ .but-header-actions .btn-ghost {
+   border: 1px solid var(--line);
+-  border-radius: 8px;
++  border-radius: var(--radius-sm);
+   padding: 7px 12px;
+   font-size: 12px;
+   white-space: nowrap;
+@@ -1305,8 +1480,8 @@ html, body {
+   display: flex;
+   align-items: baseline;
+   gap: 10px;
+-  background: var(--bg-2);
+-  border: 1px solid var(--accent-dim);
++  background: linear-gradient(120deg, rgba(79,227,255,0.08), rgba(124,140,255,0.05));
++  border: 1px solid rgba(79,227,255,0.25);
+   border-radius: var(--radius);
+   padding: 12px 16px;
+   margin: 12px 0;
+@@ -1339,7 +1514,7 @@ html, body {
+   padding: 3px 2px;
+   outline: none;
+ }
+-.but-ue-header input.ue-name:focus { border-bottom-color: var(--accent-dim); }
++.but-ue-header input.ue-name:focus { border-bottom-color: rgba(79,227,255,0.4); }
+ .but-ue-avg {
+   font-family: var(--mono);
+   font-size: 13px;
+@@ -1385,7 +1560,7 @@ html, body {
+   font-family: var(--mono);
+ }
+ .but-res-row input.res-coef:focus, .but-res-row input.res-grade:focus, .but-res-row input.res-name:focus {
+-  border-color: var(--accent-dim);
++  border-color: rgba(79,227,255,0.4);
+ }
+ .but-res-row input.res-grade.grade-low { color: var(--danger); }
+ .but-res-row input.res-grade.grade-ok { color: var(--accent-hi); }
+@@ -1411,13 +1586,12 @@ html, body {
+   background: none;
+   border: 1px dashed var(--line);
+   color: var(--text-low);
+-  border-radius: 7px;
++  border-radius: var(--radius-sm);
+   padding: 5px 10px;
+   font-size: 11.5px;
+   cursor: pointer;
+-  width: 100%;
+ }
+-.but-add-res-btn:hover { color: var(--text-hi); border-color: var(--accent-dim); }
++.but-add-res-btn:hover { color: var(--text-hi); border-color: rgba(79,227,255,0.35); }
+ 
+ .but-add-ue-btn { margin: 4px 0 0; }
+ 
+diff --git a/server/README.md b/server/README.md
+new file mode 100644
+index 0000000..b0df9f3
+--- /dev/null
++++ b/server/README.md
+@@ -0,0 +1,51 @@
++# Serveur de chat StudyIDE (réseau local)
++
++Un petit serveur qu'une seule personne doit lancer (toi, par exemple) pendant
++que les autres se connectent dessus depuis StudyIDE, tant que vous êtes sur
++le même réseau Wi-Fi / LAN (ex : à l'IUT).
++
++## Lancer le serveur
++
++```bash
++cd server
++npm install
++npm start
++```
++
++Tu devrais voir :
++
++```
++💬 Serveur de chat StudyIDE en écoute sur le port 4321
++   Comptes stockés dans : .../server/comptes.data
++```
++
++## Trouver ton IP locale (à donner aux autres)
++
++- **Windows** : `ipconfig` → ligne "Adresse IPv4"
++- **macOS / Linux** : `ifconfig` ou `ip addr` → cherche l'IP qui commence par
++  `192.168.x.x` ou `10.x.x.x`
++
++## Se connecter depuis StudyIDE
++
++Dans l'appli, ouvre la bulle 💬 en bas à droite, puis entre l'adresse au
++format :
++
++```
++192.168.1.42:4321
++```
++
++(remplace par la vraie IP du PC qui héberge le serveur)
++
++## Notes
++
++- Les comptes sont stockés **en clair** dans `comptes.data` (JSON) — pense à
++  ne pas le publier publiquement (déjà ignoré par `.gitignore` si tu en as
++  un, sinon ajoute-le).
++- Le chat est un salon commun (pas de messages privés) : tout le monde de
++  connecté voit tous les messages et fichiers échangés.
++- Les fichiers (y compris `.zip`) sont relayés en direct, sans être stockés
++  sur le serveur : seules les personnes connectées **au moment de l'envoi**
++  les reçoivent.
++- Taille max par fichier : 50 Mo (modifiable dans `chat-server.js`, constante
++  `MAX_FILE_SIZE`).
++- Le port par défaut est `4321`, changeable avec `PORT=1234 npm start`.
+diff --git a/server/chat-server.js b/server/chat-server.js
+new file mode 100644
+index 0000000..b750a20
+--- /dev/null
++++ b/server/chat-server.js
+@@ -0,0 +1,186 @@
++/**
++ * Serveur de chat LAN pour StudyIDE
++ * ----------------------------------
++ * - Gère les comptes (pseudo + mot de passe en clair dans comptes.data)
++ * - Relaie les messages de chat entre toutes les personnes connectées
++ * - Relaie les fichiers (y compris .zip) : envoyés en direct, sans stockage serveur
++ *
++ * Lancement :
++ *   cd server
++ *   npm install
++ *   npm start
++ *
++ * Les autres personnes se connectent depuis StudyIDE en entrant :
++ *   <IP locale de ce PC>:4321
++ * (trouve ton IP avec `ipconfig` sous Windows ou `ip addr` / `ifconfig` sous Linux/Mac)
++ */
++
++const { WebSocketServer, WebSocket } = require('ws');
++const fs = require('fs');
++const path = require('path');
++
++const PORT = process.env.PORT ? Number(process.env.PORT) : 4321;
++const ACCOUNTS_FILE = path.join(__dirname, 'comptes.data');
++const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 Mo — largement suffisant en LAN
++
++function loadAccounts() {
++  if (!fs.existsSync(ACCOUNTS_FILE)) return [];
++  try {
++    return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
++  } catch (e) {
++    console.error('⚠ comptes.data illisible, redémarrage avec une liste vide.', e);
++    return [];
++  }
++}
++
++function saveAccounts() {
++  fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf-8');
++}
++
++const accounts = loadAccounts(); // [{ pseudo, password }] — mot de passe en clair (choix assumé pour ce projet)
++const clients = new Map();       // ws -> { pseudo }
++const pendingFile = new Map();   // ws -> { name, size, mime }  (en attente du prochain frame binaire)
++
++function send(ws, obj) {
++  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
++}
++
++function broadcast(obj, exceptWs) {
++  const data = JSON.stringify(obj);
++  for (const ws of clients.keys()) {
++    if (ws !== exceptWs && ws.readyState === WebSocket.OPEN) ws.send(data);
++  }
++}
++
++function broadcastUsers() {
++  const list = [...clients.values()].map((c) => c.pseudo).sort((a, b) => a.localeCompare(b));
++  broadcast({ type: 'users', list });
++}
++
++const wss = new WebSocketServer({ port: PORT });
++
++wss.on('connection', (ws) => {
++  ws.on('message', (data, isBinary) => {
++    // ---- Frame binaire = contenu d'un fichier annoncé juste avant ----
++    if (isBinary) {
++      const meta = pendingFile.get(ws);
++      pendingFile.delete(ws);
++      const client = clients.get(ws);
++      if (!meta || !client) return;
++
++      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
++      if (buf.length > MAX_FILE_SIZE) {
++        send(ws, { type: 'error', message: 'Fichier trop volumineux (max 50 Mo).' });
++        return;
++      }
++
++      const header = JSON.stringify({
++        type: 'file_start',
++        from: client.pseudo,
++        name: meta.name,
++        size: buf.length,
++        mime: meta.mime,
++        ts: Date.now()
++      });
++      for (const other of clients.keys()) {
++        if (other !== ws && other.readyState === WebSocket.OPEN) {
++          other.send(header);
++          other.send(buf);
++        }
++      }
++      return;
++    }
++
++    // ---- Message texte JSON ----
++    let msg;
++    try {
++      msg = JSON.parse(data.toString('utf-8'));
++    } catch (e) {
++      return;
++    }
++
++    if (msg.type === 'register') {
++      const pseudo = String(msg.pseudo || '').trim();
++      const password = String(msg.password || '');
++      if (!pseudo || pseudo.length > 40) {
++        send(ws, { type: 'register_err', message: 'Pseudo invalide (1 à 40 caractères).' });
++        return;
++      }
++      if (!password) {
++        send(ws, { type: 'register_err', message: 'Mot de passe requis.' });
++        return;
++      }
++      if (accounts.some((a) => a.pseudo.toLowerCase() === pseudo.toLowerCase())) {
++        send(ws, { type: 'register_err', message: 'Ce pseudo est déjà pris.' });
++        return;
++      }
++      accounts.push({ pseudo, password });
++      saveAccounts();
++      send(ws, { type: 'registered', pseudo });
++      return;
++    }
++
++    if (msg.type === 'login') {
++      const pseudo = String(msg.pseudo || '').trim();
++      const password = String(msg.password || '');
++      const account = accounts.find((a) => a.pseudo.toLowerCase() === pseudo.toLowerCase());
++      if (!account || account.password !== password) {
++        send(ws, { type: 'login_err', message: 'Pseudo ou mot de passe incorrect.' });
++        return;
++      }
++      if ([...clients.values()].some((c) => c.pseudo.toLowerCase() === pseudo.toLowerCase())) {
++        send(ws, { type: 'login_err', message: 'Ce compte est déjà connecté depuis un autre appareil.' });
++        return;
++      }
++      clients.set(ws, { pseudo: account.pseudo });
++      send(ws, { type: 'login_ok', pseudo: account.pseudo });
++      broadcast({ type: 'system', text: `${account.pseudo} a rejoint le chat.`, ts: Date.now() }, ws);
++      broadcastUsers();
++      return;
++    }
++
++    // Tout le reste nécessite d'être authentifié
++    const client = clients.get(ws);
++    if (!client) {
++      send(ws, { type: 'error', message: 'Connecte-toi avant d’envoyer un message.' });
++      return;
++    }
++
++    if (msg.type === 'chat') {
++      const text = String(msg.text || '').slice(0, 4000);
++      if (!text.trim()) return;
++      broadcast({ type: 'chat', from: client.pseudo, text, ts: Date.now() });
++      return;
++    }
++
++    if (msg.type === 'file_start') {
++      const name = String(msg.name || 'fichier').slice(0, 200);
++      const size = Number(msg.size) || 0;
++      if (size > MAX_FILE_SIZE) {
++        send(ws, { type: 'error', message: 'Fichier trop volumineux (max 50 Mo).' });
++        return;
++      }
++      pendingFile.set(ws, { name, size, mime: msg.mime || 'application/octet-stream' });
++      return;
++    }
++  });
++
++  ws.on('close', () => {
++    const client = clients.get(ws);
++    clients.delete(ws);
++    pendingFile.delete(ws);
++    if (client) {
++      broadcast({ type: 'system', text: `${client.pseudo} a quitté le chat.`, ts: Date.now() });
++      broadcastUsers();
++    }
++  });
++
++  ws.on('error', () => {
++    clients.delete(ws);
++    pendingFile.delete(ws);
++  });
++});
++
++console.log(`💬 Serveur de chat StudyIDE en écoute sur le port ${PORT}`);
++console.log(`   Comptes stockés dans : ${ACCOUNTS_FILE}`);
++console.log(`   Donne ton IP locale (ex: 192.168.1.42:${PORT}) aux autres pour qu'ils se connectent depuis StudyIDE.`);
+diff --git a/server/package-lock.json b/server/package-lock.json
+new file mode 100644
+index 0000000..9441b49
+--- /dev/null
++++ b/server/package-lock.json
+@@ -0,0 +1,36 @@
++{
++  "name": "studyide-chat-server",
++  "version": "1.0.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "studyide-chat-server",
++      "version": "1.0.0",
++      "dependencies": {
++        "ws": "^8.18.0"
++      }
++    },
++    "node_modules/ws": {
++      "version": "8.21.3",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
++      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10.0.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": ">=5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    }
++  }
++}
+diff --git a/server/package.json b/server/package.json
+new file mode 100644
+index 0000000..7f035f7
+--- /dev/null
++++ b/server/package.json
+@@ -0,0 +1,13 @@
++{
++  "name": "studyide-chat-server",
++  "version": "1.0.0",
++  "private": true,
++  "description": "Petit serveur de chat LAN pour StudyIDE (comptes, messages, fichiers/zip)",
++  "main": "chat-server.js",
++  "scripts": {
++    "start": "node chat-server.js"
++  },
++  "dependencies": {
++    "ws": "^8.18.0"
++  }
++}

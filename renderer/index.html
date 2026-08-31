@@ -171,6 +171,9 @@
   <!-- ===================== BULLE MES NOTES ===================== -->
   <button class="notes-bubble-btn" id="notesBubbleBtn" title="Mes notes">📌</button>
 
+  <!-- ===================== BULLE CHAT LAN ===================== -->
+  <button class="chat-bubble-btn" id="chatBubbleBtn" title="Discuter avec d'autres StudyIDE (réseau local)">💬</button>
+
   <div class="ia-drawer-overlay" id="notesDrawerOverlay"></div>
   <aside class="ia-drawer" id="notesDrawer">
     <div class="ia-drawer-header">
@@ -247,6 +250,62 @@
         <button class="btn-primary" id="iaSendBtn">Envoyer</button>
       </div>
     </main>
+  </aside>
+
+  <!-- ===================== TIROIR CHAT LAN ===================== -->
+  <div class="ia-drawer-overlay" id="chatDrawerOverlay"></div>
+  <aside class="ia-drawer" id="chatDrawer">
+    <div class="ia-drawer-header">
+      <div class="ia-drawer-title">💬 Chat LAN</div>
+      <div class="ia-drawer-header-actions">
+        <button class="btn-ghost hidden" id="chatLogoutBtn" title="Changer de serveur / se déconnecter">⏻</button>
+        <button class="btn-ghost" id="chatCloseDrawerBtn" title="Fermer">✕</button>
+      </div>
+    </div>
+
+    <!-- Écran de connexion / inscription -->
+    <div class="chat-auth" id="chatAuthPanel">
+      <p class="settings-hint">
+        Connecte-toi à un serveur StudyIDE lancé sur ton réseau local (même
+        Wi-Fi, ex : à l'IUT) pour discuter et échanger des fichiers — y
+        compris des <code>.zip</code> — avec d'autres personnes qui ont un
+        compte.
+      </p>
+      <label>Adresse du serveur</label>
+      <input type="text" id="chatServerInput" placeholder="ex : 192.168.1.42:4321" />
+
+      <label>Pseudo</label>
+      <input type="text" id="chatPseudoInput" placeholder="Ton pseudo" maxlength="40" />
+
+      <label>Mot de passe</label>
+      <input type="password" id="chatPasswordInput" placeholder="Mot de passe" />
+
+      <div class="chat-auth-actions">
+        <button class="btn-primary" id="chatLoginBtn">Se connecter</button>
+        <button class="btn-ghost" id="chatRegisterBtn">Créer un compte</button>
+      </div>
+      <p class="chat-auth-status" id="chatAuthStatus"></p>
+    </div>
+
+    <!-- Salon de chat -->
+    <div class="chat-room hidden" id="chatRoomPanel">
+      <div class="chat-users" id="chatUsersBar">— personne d'autre en ligne —</div>
+      <main class="ia-area">
+        <div class="ia-messages" id="chatMessages">
+          <div class="ia-welcome" id="chatWelcome">
+            👋 Tu es connecté. Écris un message ou joins un fichier (même un
+            <code>.zip</code>) — tout le monde de connecté au serveur le
+            reçoit en direct.
+          </div>
+        </div>
+        <div class="ia-input-bar">
+          <button class="btn-ghost chat-attach-btn" id="chatAttachBtn" title="Joindre un fichier (zip, doc, image…)">📎</button>
+          <input type="file" id="chatFileInput" class="hidden" />
+          <textarea id="chatInput" placeholder="Écris ton message... (Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne)"></textarea>
+          <button class="btn-primary" id="chatSendBtn">Envoyer</button>
+        </div>
+      </main>
+    </div>
   </aside>
 
   <!-- Modale : réglages IA -->
@@ -330,6 +389,16 @@
           Garder StudyIDE ouvert en arrière-plan (dans la barre système) quand je ferme la fenêtre
         </label>
         <p class="settings-hint">Utile pour ne pas relancer l'appli à chaque fois. Retrouve-la via l'icône dans la zone de notification, ou quitte-la complètement depuis son menu.</p>
+      </div>
+
+      <hr class="settings-sep-visible" />
+
+      <div class="app-settings-section">
+        <label class="ia-context-toggle">
+          <input type="checkbox" id="iaNotifCheckbox" checked />
+          🔔 Me notifier quand l'IA a fini de répondre (si la fenêtre est en arrière-plan)
+        </label>
+        <p class="settings-hint">Une notification système s'affiche dès que la réponse est prête, si tu as changé de fenêtre ou minimisé StudyIDE. Clique dessus pour revenir directement à la conversation.</p>
       </div>
 
       <hr class="settings-sep-visible" />

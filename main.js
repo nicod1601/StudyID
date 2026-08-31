@@ -634,7 +634,7 @@ const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
 
 function readSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true };
+    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
     return initial;
   }
@@ -644,9 +644,10 @@ function readSettings() {
     if (!s.localModelId) s.localModelId = 'fast';
     if (!s.iaEngine) s.iaEngine = 'auto';
     if (s.minimizeToTray === undefined) s.minimizeToTray = true;
+    if (s.iaNotifications === undefined) s.iaNotifications = true;
     return s;
   } catch (e) {
-    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true };
+    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true };
   }
 }
 
@@ -916,6 +917,13 @@ ipcMain.handle('docs:savePageText', (evt, { documentId, pages }) => {
 });
 
 ipcMain.handle('app:getWorkspaceDir', () => WORKSPACE_DIR);
+
+ipcMain.handle('app:focusWindow', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+});
 
 ipcMain.handle('docs:getSearchCorpus', () => {
   const db = readDB();

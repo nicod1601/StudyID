@@ -1,0 +1,70 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+echo "============================================"
+echo "  DESINSTALLATION COMPLETE DE STUDYIDE"
+echo "============================================"
+echo ""
+echo "Ceci va supprimer DEFINITIVEMENT :"
+echo ""
+echo "  1. Le dossier de l'application (code, node_modules...) :"
+echo "     $SCRIPT_DIR"
+echo ""
+echo "  2. Ton espace de travail (exercices, cours PDF, notes,"
+echo "     IA locale telechargee, plusieurs Go possible) :"
+echo "     $HOME/StudyIDE"
+echo ""
+echo "  3. Les donnees internes d'Electron (cache, reglages) :"
+echo "     $HOME/.config/StudyIDE"
+echo ""
+echo "  4. Les raccourcis (Bureau + menu d'applications), s'ils existent."
+echo ""
+echo "  /!\\ Cette action est IRREVERSIBLE."
+echo "  /!\\ Ferme StudyIDE avant de continuer si ce n'est pas deja fait."
+echo ""
+
+read -p "Tape SUPPRIMER en majuscules pour confirmer : " CONFIRM
+if [ "$CONFIRM" != "SUPPRIMER" ]; then
+  echo ""
+  echo "Annule. Rien n'a ete supprime."
+  read -p "Appuie sur Entree pour fermer..."
+  exit 0
+fi
+
+echo ""
+echo "Fermeture de StudyIDE si elle est encore ouverte..."
+pkill -f "$SCRIPT_DIR/main.js" 2>/dev/null || true
+pkill -f "electron $SCRIPT_DIR" 2>/dev/null || true
+sleep 1
+
+echo "Suppression en cours..."
+
+if [ -d "$HOME/StudyIDE" ]; then
+  rm -rf "$HOME/StudyIDE"
+  echo "  - Espace de travail supprime."
+fi
+
+if [ -d "$HOME/.config/StudyIDE" ]; then
+  rm -rf "$HOME/.config/StudyIDE"
+  echo "  - Cache/reglages Electron supprimes."
+fi
+
+if [ -f "$HOME/Desktop/StudyIDE.desktop" ]; then
+  rm -f "$HOME/Desktop/StudyIDE.desktop"
+  echo "  - Raccourci Bureau supprime."
+fi
+
+if [ -f "$HOME/.local/share/applications/studyide.desktop" ]; then
+  rm -f "$HOME/.local/share/applications/studyide.desktop"
+  echo "  - Entree du menu d'applications supprimee."
+fi
+
+echo "  - Suppression du dossier de l'application..."
+cd "$HOME"
+rm -rf "$SCRIPT_DIR"
+
+echo ""
+echo "StudyIDE a ete completement desinstalle."
+read -p "Appuie sur Entree pour fermer cette fenetre..."

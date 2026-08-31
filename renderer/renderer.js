@@ -48,6 +48,7 @@ async function init() {
   bindNotesEvents();
   bindButEvents();
   bindAppSettingsEvents();
+  bindChatBubbleEvents();
 }
 
 function renderCourseList() {
@@ -1180,6 +1181,52 @@ function appendAssistantMessage({ modeLabel, bodyHtml, sources }) {
   });
   el('iaMessages').appendChild(wrap);
   el('iaMessages').scrollTop = el('iaMessages').scrollHeight;
+  notifyIaResponseIfBackground(modeLabel, wrap.querySelector('.ia-bubble').textContent);
+}
+
+// =====================================================================
+// NOTIFICATIONS SYSTÈME : prévenir quand l'IA a fini de répondre
+// et que la fenêtre est en arrière-plan (pas au premier plan / masquée)
+// =====================================================================
+
+async function ensureNotificationPermission() {
+  if (typeof Notification === 'undefined') return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  try {
+    const perm = await Notification.requestPermission();
+    return perm === 'granted';
+  } catch (e) {
+    return false;
+  }
+}
+
+async function notifyIaResponseIfBackground(modeLabel, plainText) {
+  try {
+    if (typeof Notification === 'undefined') return;
+    // On ne notifie que si l'appli n'est pas au premier plan (autre fenêtre active, ou masquée dans le tray)
+    if (document.hasFocus() && !document.hidden) return;
+
+    const settings = await window.studyide.getSettings();
+    if (settings.iaNotifications === false) return;
+
+    const ok = await ensureNotificationPermission();
+    if (!ok) return;
+
+    const excerpt = (plainText || '').trim().replace(/\s+/g, ' ').slice(0, 140);
+    const notif = new Notification('StudyIDE — L\'IA a fini de répondre', {
+      body: excerpt || modeLabel || 'Ta réponse est prête.',
+      silent: false
+    });
+    notif.onclick = () => {
+      window.studyide.focusWindow();
+      window.focus();
+      notif.close();
+    };
+  } catch (e) {
+    // Silencieux : une notification ratée ne doit jamais casser le chat IA
+    console.error('Notification IA impossible :', e);
+  }
 }
 
 function answerOffline(question, results) {
@@ -1616,6 +1663,7 @@ function bindButEvents() {
 async function openAppSettingsModal() {
   const s = await window.studyide.getSettings();
   el('minimizeToTrayCheckbox').checked = s.minimizeToTray !== false;
+  el('iaNotifCheckbox').checked = s.iaNotifications !== false;
   el('exportStatus').textContent = '';
   el('exportStatus').className = 'export-status';
   el('shortcutStatus').textContent = '';
@@ -1630,6 +1678,12 @@ function bindAppSettingsEvents() {
   el('minimizeToTrayCheckbox').onchange = async (e) => {
     const s = await window.studyide.getSettings();
     await window.studyide.setSettings({ ...s, minimizeToTray: e.target.checked });
+  };
+
+  el('iaNotifCheckbox').onchange = async (e) => {
+    if (e.target.checked) await ensureNotificationPermission();
+    const s = await window.studyide.getSettings();
+    await window.studyide.setSettings({ ...s, iaNotifications: e.target.checked });
   };
 
   el('exportDataBtn').onclick = async (e) => {
@@ -1669,6 +1723,270 @@ function bindAppSettingsEvents() {
       statusEl.textContent = `❌ Erreur : ${res.error}`;
       statusEl.className = 'export-status err';
     }
+  };
+}
+
+// =====================================================================
+// CHAT LAN — comptes, connexion, salon commun, envoi de fichiers/zip
+// =====================================================================
+
+let chatDrawerOpen = false;
+let chatWs = null;
+let chatConnectedPseudo = null;
+let chatPendingIncomingFile = null; // {from, name, size, mime, ts} en attente du frame binaire suivant
+
+function openChatDrawer() {
+  chatDrawerOpen = true;
+  el('chatDrawer').classList.add('open');
+  el('chatDrawerOverlay').classList.add('open');
+  el('chatBubbleBtn').classList.add('active');
+
+  const savedServer = localStorage.getItem('studyide_chat_server');
+  const savedPseudo = localStorage.getItem('studyide_chat_pseudo');
+  if (savedServer && !el('chatServerInput').value) el('chatServerInput').value = savedServer;
+  if (savedPseudo && !el('chatPseudoInput').value) el('chatPseudoInput').value = savedPseudo;
+}
+
+function closeChatDrawer() {
+  chatDrawerOpen = false;
+  el('chatDrawer').classList.remove('open');
+  el('chatDrawerOverlay').classList.remove('open');
+  el('chatBubbleBtn').classList.remove('active');
+}
+
+function setChatAuthStatus(text, isError) {
+  const s = el('chatAuthStatus');
+  s.textContent = text || '';
+  s.className = 'chat-auth-status' + (isError ? ' err' : '');
+}
+
+function chatServerUrl() {
+  const raw = el('chatServerInput').value.trim().replace(/^ws:\/\//, '').replace(/\/$/, '');
+  return raw;
+}
+
+function connectChatSocket(onOpenCallback) {
+  const address = chatServerUrl();
+  if (!address) {
+    setChatAuthStatus('Entre l\'adresse du serveur (ex : 192.168.1.42:4321).', true);
+    return;
+  }
+  if (chatWs) {
+    try { chatWs.close(); } catch (e) {}
+    chatWs = null;
+  }
+  setChatAuthStatus('Connexion en cours…', false);
+  let socket;
+  try {
+    socket = new WebSocket(`ws://${address}`);
+  } catch (e) {
+    setChatAuthStatus('Adresse de serveur invalide.', true);
+    return;
+  }
+  socket.binaryType = 'arraybuffer';
+  chatWs = socket;
+
+  socket.onopen = () => {
+    setChatAuthStatus('Connecté au serveur ✅', false);
+    if (onOpenCallback) onOpenCallback();
+  };
+  socket.onerror = () => {
+    setChatAuthStatus('Impossible de joindre ce serveur. Vérifie l\'adresse et le réseau.', true);
+  };
+  socket.onclose = () => {
+    if (chatConnectedPseudo) {
+      appendChatSystem('Déconnecté du serveur.');
+    }
+    chatConnectedPseudo = null;
+    chatWs = null;
+    el('chatRoomPanel').classList.add('hidden');
+    el('chatAuthPanel').classList.remove('hidden');
+    el('chatLogoutBtn').classList.add('hidden');
+  };
+  socket.onmessage = (event) => handleChatSocketMessage(event);
+}
+
+function handleChatSocketMessage(event) {
+  // Frame binaire = contenu d'un fichier annoncé juste avant
+  if (event.data instanceof ArrayBuffer) {
+    if (!chatPendingIncomingFile) return;
+    const meta = chatPendingIncomingFile;
+    chatPendingIncomingFile = null;
+    const blob = new Blob([event.data], { type: meta.mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    appendChatFile(meta.from, meta.name, meta.size, url, false);
+    return;
+  }
+
+  let msg;
+  try { msg = JSON.parse(event.data); } catch (e) { return; }
+
+  if (msg.type === 'register_err') { setChatAuthStatus(msg.message, true); return; }
+  if (msg.type === 'registered') {
+    setChatAuthStatus('Compte créé ✅ Connexion…', false);
+    chatWs.send(JSON.stringify({
+      type: 'login',
+      pseudo: el('chatPseudoInput').value.trim(),
+      password: el('chatPasswordInput').value
+    }));
+    return;
+  }
+  if (msg.type === 'login_err') { setChatAuthStatus(msg.message, true); return; }
+  if (msg.type === 'login_ok') {
+    chatConnectedPseudo = msg.pseudo;
+    localStorage.setItem('studyide_chat_server', chatServerUrl());
+    localStorage.setItem('studyide_chat_pseudo', msg.pseudo);
+    el('chatAuthPanel').classList.add('hidden');
+    el('chatRoomPanel').classList.remove('hidden');
+    el('chatLogoutBtn').classList.remove('hidden');
+    setChatAuthStatus('', false);
+    return;
+  }
+  if (msg.type === 'users') {
+    const others = msg.list.filter((p) => p !== chatConnectedPseudo);
+    el('chatUsersBar').textContent = others.length
+      ? `🟢 En ligne : ${others.join(', ')}`
+      : '— personne d\'autre en ligne pour le moment —';
+    return;
+  }
+  if (msg.type === 'chat') {
+    appendChatMessage(msg.from, msg.text, msg.from === chatConnectedPseudo);
+    return;
+  }
+  if (msg.type === 'system') {
+    appendChatSystem(msg.text);
+    return;
+  }
+  if (msg.type === 'file_start') {
+    chatPendingIncomingFile = msg;
+    return;
+  }
+  if (msg.type === 'error') {
+    appendChatSystem(`⚠ ${msg.message}`);
+    return;
+  }
+}
+
+function appendChatMessage(from, text, self) {
+  el('chatWelcome') && el('chatWelcome').remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'ia-msg ' + (self ? 'user' : 'assistant');
+  const badge = document.createElement('div');
+  badge.className = 'ia-badge-mode';
+  badge.textContent = self ? 'Toi' : from;
+  const bubble = document.createElement('div');
+  bubble.className = 'ia-bubble';
+  bubble.textContent = text;
+  wrap.appendChild(badge);
+  wrap.appendChild(bubble);
+  el('chatMessages').appendChild(wrap);
+  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
+}
+
+function appendChatSystem(text) {
+  el('chatWelcome') && el('chatWelcome').remove();
+  const div = document.createElement('div');
+  div.className = 'chat-system-line';
+  div.textContent = text;
+  el('chatMessages').appendChild(div);
+  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
+}
+
+function appendChatFile(from, name, size, url, self) {
+  el('chatWelcome') && el('chatWelcome').remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'ia-msg ' + (self ? 'user' : 'assistant');
+  const badge = document.createElement('div');
+  badge.className = 'ia-badge-mode';
+  badge.textContent = self ? 'Toi' : from;
+  const chip = document.createElement('a');
+  chip.className = 'chat-file-chip';
+  chip.href = url;
+  chip.download = name;
+  const isZip = /\.zip$/i.test(name);
+  chip.innerHTML = `<span class="cf-icon">${isZip ? '🗜' : '📎'}</span><span class="cf-name">${escapeHtml(name)}</span><span class="cf-size">${formatFileSize(size)} · télécharger</span>`;
+  wrap.appendChild(badge);
+  wrap.appendChild(chip);
+  el('chatMessages').appendChild(wrap);
+  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function sendChatMessage() {
+  const text = el('chatInput').value.trim();
+  if (!text || !chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+  chatWs.send(JSON.stringify({ type: 'chat', text }));
+  appendChatMessage(chatConnectedPseudo, text, true);
+  el('chatInput').value = '';
+}
+
+function sendChatFile(file) {
+  if (!chatWs || chatWs.readyState !== WebSocket.OPEN) return;
+  if (file.size > 50 * 1024 * 1024) {
+    appendChatSystem('⚠ Fichier trop volumineux (max 50 Mo).');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    chatWs.send(JSON.stringify({ type: 'file_start', name: file.name, size: file.size, mime: file.type }));
+    chatWs.send(reader.result);
+    appendChatFile(chatConnectedPseudo, file.name, file.size, URL.createObjectURL(file), true);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function bindChatBubbleEvents() {
+  el('chatBubbleBtn').onclick = () => { chatDrawerOpen ? closeChatDrawer() : openChatDrawer(); };
+  el('chatCloseDrawerBtn').onclick = closeChatDrawer;
+  el('chatDrawerOverlay').onclick = closeChatDrawer;
+
+  el('chatLoginBtn').onclick = () => {
+    const pseudo = el('chatPseudoInput').value.trim();
+    const password = el('chatPasswordInput').value;
+    if (!pseudo || !password) { setChatAuthStatus('Pseudo et mot de passe requis.', true); return; }
+    connectChatSocket(() => {
+      chatWs.send(JSON.stringify({ type: 'login', pseudo, password }));
+    });
+  };
+
+  el('chatRegisterBtn').onclick = () => {
+    const pseudo = el('chatPseudoInput').value.trim();
+    const password = el('chatPasswordInput').value;
+    if (!pseudo || !password) { setChatAuthStatus('Pseudo et mot de passe requis.', true); return; }
+    connectChatSocket(() => {
+      chatWs.send(JSON.stringify({ type: 'register', pseudo, password }));
+    });
+  };
+
+  el('chatLogoutBtn').onclick = () => {
+    if (chatWs) { try { chatWs.close(); } catch (e) {} }
+    chatWs = null;
+    chatConnectedPseudo = null;
+    el('chatMessages').innerHTML = '<div class="ia-welcome" id="chatWelcome">👋 Reconnecte-toi pour continuer à discuter.</div>';
+    el('chatRoomPanel').classList.add('hidden');
+    el('chatAuthPanel').classList.remove('hidden');
+    el('chatLogoutBtn').classList.add('hidden');
+    setChatAuthStatus('', false);
+  };
+
+  el('chatSendBtn').onclick = sendChatMessage;
+  el('chatInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  el('chatAttachBtn').onclick = () => el('chatFileInput').click();
+  el('chatFileInput').onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) sendChatFile(file);
+    e.target.value = '';
   };
 }
 

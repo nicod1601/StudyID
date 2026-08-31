@@ -41,6 +41,30 @@ else
   echo ""
 fi
 
+# ============================================
+#   Serveur de chat LAN (optionnel)
+# ============================================
+if [ -d "server" ]; then
+  if [ ! -d "server/node_modules" ]; then
+    echo "Installation des dépendances du serveur de chat LAN..."
+    (cd server && npm install)
+    echo ""
+  fi
+
+  echo "============================================"
+  read -p "Lancer aussi le serveur de chat LAN sur ce PC ? (o/n) : " LAUNCH_SERVER
+  if [[ "$LAUNCH_SERVER" =~ ^[oOyY]$ ]]; then
+    (
+      cd server
+      nohup npm start > chat-server.log 2>&1 &
+      echo "Serveur de chat lancé en arrière-plan (PID $!)."
+      echo "Journal disponible dans : $SCRIPT_DIR/server/chat-server.log"
+      echo "Pour l'arrêter plus tard : pkill -f chat-server.js"
+    )
+    echo ""
+  fi
+fi
+
 echo "Lancement de StudyIDE..."
 echo ""
 npm start

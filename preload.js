@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('studyide', {
   executeCode: (payload) => ipcRenderer.invoke('run:execute', payload),
 
   getWorkspaceDir: () => ipcRenderer.invoke('app:getWorkspaceDir'),
+  focusWindow: () => ipcRenderer.invoke('app:focusWindow'),
 
   listDocuments: (courseCode) => ipcRenderer.invoke('docs:listByCourse', courseCode),
   readPdfBase64: (filePath) => ipcRenderer.invoke('docs:readAsBase64', filePath),

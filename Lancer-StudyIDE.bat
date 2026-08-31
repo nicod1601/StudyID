@@ -61,6 +61,29 @@ if not exist "node_modules" (
     echo.
 )
 
+REM ============================================
+REM   Serveur de chat LAN (optionnel)
+REM ============================================
+if exist "server" (
+    if not exist "server\node_modules" (
+        echo Installation des dependances du serveur de chat LAN...
+        pushd server
+        call npm install
+        popd
+        echo.
+    )
+
+    echo ============================================
+    set /p LAUNCH_SERVER="Lancer aussi le serveur de chat LAN sur ce PC ? (o/n) : "
+    if /i "%LAUNCH_SERVER%"=="o" (
+        echo Lancement du serveur de chat dans une nouvelle fenetre...
+        start "StudyIDE - Serveur de chat LAN" cmd /k "cd /d "%~dp0server" && npm start"
+        echo Serveur de chat lance. Laisse cette fenetre ouverte tant que
+        echo tu veux que le chat fonctionne pour les autres.
+        echo.
+    )
+)
+
 echo Lancement de StudyIDE...
 echo.
 call npm start
