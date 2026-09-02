@@ -31,6 +31,7 @@
         <button class="mode-btn active" id="modeCodeBtn">💻 Code</button>
         <button class="mode-btn" id="modeCoursBtn">📚 Cours</button>
         <button class="mode-btn" id="modeProjetBtn">🗂 Projet</button>
+        <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
       </div>
 
       <div class="quick-actions">
@@ -162,6 +163,38 @@
       </main>
     </div>
 
+    <!-- ===================== MODE EMPLOI DU TEMPS ===================== -->
+    <div class="content-wrapper edt-wrapper hidden" id="edtContent">
+      <section class="edt-area">
+        <div class="edt-toolbar">
+          <div class="edt-title">🗓 Emploi du temps — HyperPlanning</div>
+          <div class="actions">
+            <button class="btn-ghost" id="edtRemindersBtn" title="Gérer les rappels de cours">🔔 Rappels</button>
+            <button class="btn-ghost hidden" id="edtRefreshBtn" title="Actualiser">🔄 Actualiser</button>
+            <button class="btn-ghost hidden" id="edtOpenBrowserBtn" title="Ouvrir dans le navigateur">🌐 Navigateur</button>
+            <button class="btn-ghost hidden" id="edtSettingsBtn" title="Changer le lien">🔗 Changer le lien</button>
+          </div>
+        </div>
+
+        <div class="edt-empty" id="edtEmptyState">
+          <p class="edt-empty-title">Affiche ton emploi du temps directement dans StudyIDE</p>
+          <p class="settings-hint">
+            Connecte-toi sur ton espace HyperPlanning (ex :
+            <code>hplanning.univ-lehavre.fr</code>), va dans
+            <strong>Étudiants → Emploi du temps</strong>, puis copie le lien
+            de la page depuis la barre d'adresse de ton navigateur — il
+            contient <code>?identifiant=...</code>.
+          </p>
+          <label>Lien de ton emploi du temps</label>
+          <input type="text" id="edtUrlInput" placeholder="https://hplanning.univ-lehavre.fr/etudiant?identifiant=..." />
+          <button class="btn-primary" id="edtSaveUrlBtn">Enregistrer et afficher</button>
+          <p class="chat-auth-status" id="edtUrlStatus"></p>
+        </div>
+
+        <webview id="edtWebview" class="hidden" allowpopups partition="persist:hplanning"></webview>
+      </section>
+    </div>
+
     </div>
   </div>
 
@@ -289,15 +322,9 @@
 
     <!-- Salon de chat -->
     <div class="chat-room hidden" id="chatRoomPanel">
-      <div class="chat-users" id="chatUsersBar">— personne d'autre en ligne —</div>
+      <div class="chat-threads" id="chatThreadsBar"></div>
       <main class="ia-area">
-        <div class="ia-messages" id="chatMessages">
-          <div class="ia-welcome" id="chatWelcome">
-            👋 Tu es connecté. Écris un message ou joins un fichier (même un
-            <code>.zip</code>) — tout le monde de connecté au serveur le
-            reçoit en direct.
-          </div>
-        </div>
+        <div class="ia-messages" id="chatMessages"></div>
         <div class="ia-input-bar">
           <button class="btn-ghost chat-attach-btn" id="chatAttachBtn" title="Joindre un fichier (zip, doc, image…)">📎</button>
           <input type="file" id="chatFileInput" class="hidden" />
@@ -309,6 +336,56 @@
   </aside>
 
   <!-- Modale : réglages IA -->
+  <!-- Modale : rappels de cours (EDT) -->
+  <div class="modal-overlay" id="edtRemindersOverlay">
+    <div class="modal modal-wide" style="width:560px; max-height:85vh; overflow-y:auto;">
+      <h3>🔔 Rappels de cours</h3>
+      <p class="settings-hint">
+        HyperPlanning ne fournit pas d'horaires exploitables automatiquement
+        depuis la page (voir le lien intégré ci-contre) — remplis une fois
+        ton créneau hebdomadaire habituel ci-dessous, ça vaut pour tout le
+        semestre. Une notification s'affichera avant chaque cours, même
+        fenêtre en arrière-plan.
+      </p>
+
+      <label class="ia-context-toggle">
+        <input type="checkbox" id="edtRemindersEnabledCheckbox" checked />
+        Activer les rappels
+      </label>
+
+      <div class="edt-reminder-minutes-row">
+        <label>Me prévenir</label>
+        <input type="number" id="edtReminderMinutesInput" min="1" max="120" value="15" />
+        <span>minutes avant le début</span>
+      </div>
+
+      <hr class="settings-sep-visible" />
+
+      <div id="edtReminderList"></div>
+
+      <div class="edt-reminder-form">
+        <select id="edtNewReminderDay">
+          <option value="0">Lundi</option>
+          <option value="1">Mardi</option>
+          <option value="2">Mercredi</option>
+          <option value="3">Jeudi</option>
+          <option value="4">Vendredi</option>
+          <option value="5">Samedi</option>
+          <option value="6">Dimanche</option>
+        </select>
+        <input type="time" id="edtNewReminderTime" value="08:00" />
+        <input type="text" id="edtNewReminderLabel" placeholder="Nom du cours (ex : 5.05 Prog Avancée)" />
+        <input type="text" id="edtNewReminderRoom" placeholder="Salle (optionnel)" />
+        <button class="but-add-res-btn" id="edtAddReminderBtn" title="Ajouter ce créneau">+ Ajouter</button>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" id="edtRemindersCloseBtn">Fermer</button>
+        <button class="btn-primary" id="edtRemindersSaveBtn" style="width:auto; padding:9px 18px;">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="iaSettingsOverlay">
     <div class="modal modal-md">
       <h3>🧠 Mini IA locale</h3>

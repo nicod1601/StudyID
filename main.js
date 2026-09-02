@@ -270,7 +270,9 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true,
+      backgroundThrottling: false
     }
   });
   mainWindow.setMenuBarVisibility(false);
@@ -634,7 +636,7 @@ const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
 
 function readSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true };
+    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15 };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
     return initial;
   }
@@ -645,9 +647,13 @@ function readSettings() {
     if (!s.iaEngine) s.iaEngine = 'auto';
     if (s.minimizeToTray === undefined) s.minimizeToTray = true;
     if (s.iaNotifications === undefined) s.iaNotifications = true;
+    if (s.hplanningUrl === undefined) s.hplanningUrl = '';
+    if (!Array.isArray(s.edtReminders)) s.edtReminders = [];
+    if (s.edtRemindersEnabled === undefined) s.edtRemindersEnabled = true;
+    if (s.edtReminderMinutesBefore === undefined) s.edtReminderMinutesBefore = 15;
     return s;
   } catch (e) {
-    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true };
+    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15 };
   }
 }
 

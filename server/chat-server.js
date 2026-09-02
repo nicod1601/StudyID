@@ -2,8 +2,9 @@
  * Serveur de chat LAN pour StudyIDE
  * ----------------------------------
  * - Gère les comptes (pseudo + mot de passe en clair dans comptes.data)
- * - Relaie les messages de chat entre toutes les personnes connectées
- * - Relaie les fichiers (y compris .zip) : envoyés en direct, sans stockage serveur
+ * - Relaie les messages du salon commun ET les messages privés (DM)
+ * - Conserve un historique texte persistant (messages.data)
+ * - Relaie les fichiers (y compris .zip) en direct, sans stockage serveur
  *
  * Lancement :
  *   cd server
@@ -21,7 +22,10 @@ const path = require('path');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4321;
 const ACCOUNTS_FILE = path.join(__dirname, 'comptes.data');
+const MESSAGES_FILE = path.join(__dirname, 'messages.data');
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 Mo — largement suffisant en LAN
+const MAX_HISTORY = 500;   // messages conservés au total (salon + DM confondus)
+const ROOM_HISTORY_SENT = 100; // nb de messages du salon renvoyés à la connexion
 
 function loadAccounts() {
   if (!fs.existsSync(ACCOUNTS_FILE)) return [];
@@ -37,12 +41,35 @@ function saveAccounts() {
   fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf-8');
 }
 
+function loadMessages() {
+  if (!fs.existsSync(MESSAGES_FILE)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf-8'));
+  } catch (e) {
+    console.error('⚠ messages.data illisible, redémarrage avec un historique vide.', e);
+    return [];
+  }
+}
+
+function saveMessages() {
+  if (messages.length > MAX_HISTORY) messages = messages.slice(-MAX_HISTORY);
+  fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2), 'utf-8');
+}
+
 const accounts = loadAccounts(); // [{ pseudo, password }] — mot de passe en clair (choix assumé pour ce projet)
+let messages = loadMessages();   // [{ type:'room'|'dm', from, to?, text, ts }]
 const clients = new Map();       // ws -> { pseudo }
 const pendingFile = new Map();   // ws -> { name, size, mime }  (en attente du prochain frame binaire)
 
 function send(ws, obj) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function findClientWs(pseudo) {
+  for (const [ws, c] of clients.entries()) {
+    if (c.pseudo.toLowerCase() === pseudo.toLowerCase()) return ws;
+  }
+  return null;
 }
 
 function broadcast(obj, exceptWs) {
@@ -134,6 +161,16 @@ wss.on('connection', (ws) => {
       }
       clients.set(ws, { pseudo: account.pseudo });
       send(ws, { type: 'login_ok', pseudo: account.pseudo });
+
+      const roomHistory = messages.filter((m) => m.type === 'room').slice(-ROOM_HISTORY_SENT);
+      send(ws, { type: 'history', messages: roomHistory });
+
+      const dmHistory = messages.filter((m) => m.type === 'dm' && (
+        m.from.toLowerCase() === account.pseudo.toLowerCase() ||
+        m.to.toLowerCase() === account.pseudo.toLowerCase()
+      ));
+      send(ws, { type: 'dm_history', messages: dmHistory });
+
       broadcast({ type: 'system', text: `${account.pseudo} a rejoint le chat.`, ts: Date.now() }, ws);
       broadcastUsers();
       return;
@@ -149,7 +186,28 @@ wss.on('connection', (ws) => {
     if (msg.type === 'chat') {
       const text = String(msg.text || '').slice(0, 4000);
       if (!text.trim()) return;
-      broadcast({ type: 'chat', from: client.pseudo, text, ts: Date.now() });
+      const record = { type: 'room', from: client.pseudo, text, ts: Date.now() };
+      messages.push(record);
+      saveMessages();
+      broadcast({ type: 'chat', from: record.from, text: record.text, ts: record.ts }, ws);
+      return;
+    }
+
+    if (msg.type === 'dm') {
+      const to = String(msg.to || '').trim();
+      const text = String(msg.text || '').slice(0, 4000);
+      if (!to || !text.trim()) return;
+      if (to.toLowerCase() === client.pseudo.toLowerCase()) return; // pas de DM à soi-même
+
+      const record = { type: 'dm', from: client.pseudo, to, text, ts: Date.now() };
+      messages.push(record);
+      saveMessages();
+
+      const targetWs = findClientWs(to);
+      if (targetWs) {
+        send(targetWs, { type: 'dm', from: record.from, to: record.to, text: record.text, ts: record.ts });
+      }
+      // Pas d'écho à l'expéditeur : le client affiche son propre message localement à l'envoi.
       return;
     }
 

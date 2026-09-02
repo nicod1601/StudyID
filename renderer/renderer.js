@@ -49,6 +49,11 @@ async function init() {
   bindButEvents();
   bindAppSettingsEvents();
   bindChatBubbleEvents();
+  bindEdtEvents();
+  bindEdtRemindersEvents();
+
+  await loadEdtReminderSettings();
+  startEdtReminderLoop();
 }
 
 function renderCourseList() {
@@ -240,11 +245,14 @@ function switchMode(mode) {
   el('modeCodeBtn').classList.toggle('active', mode === 'code');
   el('modeCoursBtn').classList.toggle('active', mode === 'cours');
   el('modeProjetBtn').classList.toggle('active', mode === 'projet');
+  el('modeEdtBtn').classList.toggle('active', mode === 'edt');
   el('codeContent').classList.toggle('hidden', mode !== 'code');
   el('coursContent').classList.toggle('hidden', mode !== 'cours');
   el('projetContent').classList.toggle('hidden', mode !== 'projet');
+  el('edtContent').classList.toggle('hidden', mode !== 'edt');
   if (mode === 'cours' && currentCourse) renderDocList();
   if (mode === 'projet') initProjectMode();
+  if (mode === 'edt') initEdtMode();
   updateIaContextChip();
 }
 
@@ -477,6 +485,7 @@ function bindCoursEvents() {
   el('modeCodeBtn').onclick = () => switchMode('code');
   el('modeCoursBtn').onclick = () => switchMode('cours');
   el('modeProjetBtn').onclick = () => switchMode('projet');
+  el('modeEdtBtn').onclick = () => switchMode('edt');
 
   el('importPdfBtn').onclick = async () => {
     if (!currentCourse) { alert('Choisis d’abord une matière à gauche.'); return; }
@@ -1735,6 +1744,12 @@ let chatWs = null;
 let chatConnectedPseudo = null;
 let chatPendingIncomingFile = null; // {from, name, size, mime, ts} en attente du frame binaire suivant
 
+// Fils de discussion : 'room' (salon commun) + un fil par pseudo en DM
+let chatThreads = { room: [] };
+let chatActiveThread = 'room';
+let chatOnlineUsers = [];
+let chatUnread = {};
+
 function openChatDrawer() {
   chatDrawerOpen = true;
   el('chatDrawer').classList.add('open');
@@ -1807,14 +1822,14 @@ function connectChatSocket(onOpenCallback) {
 }
 
 function handleChatSocketMessage(event) {
-  // Frame binaire = contenu d'un fichier annoncé juste avant
+  // Frame binaire = contenu d'un fichier annoncé juste avant (toujours dans le salon commun)
   if (event.data instanceof ArrayBuffer) {
     if (!chatPendingIncomingFile) return;
     const meta = chatPendingIncomingFile;
     chatPendingIncomingFile = null;
     const blob = new Blob([event.data], { type: meta.mime || 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
-    appendChatFile(meta.from, meta.name, meta.size, url, false);
+    pushChatEntry('room', { type: 'file', from: meta.from, name: meta.name, size: meta.size, url, self: false });
     return;
   }
 
@@ -1832,83 +1847,187 @@ function handleChatSocketMessage(event) {
     return;
   }
   if (msg.type === 'login_err') { setChatAuthStatus(msg.message, true); return; }
+
   if (msg.type === 'login_ok') {
     chatConnectedPseudo = msg.pseudo;
+    chatThreads = { room: [] };
+    chatActiveThread = 'room';
+    chatUnread = {};
+    chatOnlineUsers = [];
     localStorage.setItem('studyide_chat_server', chatServerUrl());
     localStorage.setItem('studyide_chat_pseudo', msg.pseudo);
     el('chatAuthPanel').classList.add('hidden');
     el('chatRoomPanel').classList.remove('hidden');
     el('chatLogoutBtn').classList.remove('hidden');
     setChatAuthStatus('', false);
+    renderChatThreadsBar();
+    renderActiveChatThread();
     return;
   }
+
   if (msg.type === 'users') {
-    const others = msg.list.filter((p) => p !== chatConnectedPseudo);
-    el('chatUsersBar').textContent = others.length
-      ? `🟢 En ligne : ${others.join(', ')}`
-      : '— personne d\'autre en ligne pour le moment —';
+    chatOnlineUsers = msg.list.filter((p) => p !== chatConnectedPseudo);
+    renderChatThreadsBar();
     return;
   }
+
+  if (msg.type === 'history') {
+    msg.messages.forEach((m) => {
+      chatThreads.room.push({ type: 'chat', from: m.from, text: m.text, ts: m.ts, self: m.from === chatConnectedPseudo });
+    });
+    if (chatActiveThread === 'room') renderActiveChatThread();
+    return;
+  }
+
+  if (msg.type === 'dm_history') {
+    msg.messages.forEach((m) => {
+      const partner = m.from === chatConnectedPseudo ? m.to : m.from;
+      if (!chatThreads[partner]) chatThreads[partner] = [];
+      chatThreads[partner].push({ type: 'chat', from: m.from, text: m.text, ts: m.ts, self: m.from === chatConnectedPseudo });
+    });
+    renderChatThreadsBar();
+    if (chatActiveThread !== 'room') renderActiveChatThread();
+    return;
+  }
+
   if (msg.type === 'chat') {
-    appendChatMessage(msg.from, msg.text, msg.from === chatConnectedPseudo);
+    pushChatEntry('room', { type: 'chat', from: msg.from, text: msg.text, ts: msg.ts, self: false });
     return;
   }
+
+  if (msg.type === 'dm') {
+    // On ne reçoit ici que les DM envoyés PAR quelqu'un d'autre (pas d'écho pour nos propres envois)
+    const partner = msg.from;
+    pushChatEntry(partner, { type: 'chat', from: msg.from, text: msg.text, ts: msg.ts, self: false });
+    return;
+  }
+
   if (msg.type === 'system') {
-    appendChatSystem(msg.text);
+    pushChatEntry('room', { type: 'system', text: msg.text, ts: Date.now() });
     return;
   }
+
   if (msg.type === 'file_start') {
     chatPendingIncomingFile = msg;
     return;
   }
+
   if (msg.type === 'error') {
-    appendChatSystem(`⚠ ${msg.message}`);
+    pushChatEntry(chatActiveThread, { type: 'system', text: `⚠ ${msg.message}`, ts: Date.now() });
     return;
   }
 }
 
-function appendChatMessage(from, text, self) {
-  el('chatWelcome') && el('chatWelcome').remove();
+// ---- Gestion des fils (salon + DM) ----
+
+function chatThreadKeys() {
+  const partners = new Set(Object.keys(chatThreads).filter((k) => k !== 'room'));
+  chatOnlineUsers.forEach((p) => partners.add(p));
+  return ['room', ...[...partners].sort((a, b) => a.localeCompare(b))];
+}
+
+function renderChatThreadsBar() {
+  const bar = el('chatThreadsBar');
+  bar.innerHTML = '';
+  chatThreadKeys().forEach((key) => {
+    const pill = document.createElement('button');
+    const isOnline = key === 'room' || chatOnlineUsers.includes(key);
+    pill.className = 'chat-thread-pill'
+      + (key === chatActiveThread ? ' active' : '')
+      + (chatUnread[key] ? ' unread' : '');
+    pill.innerHTML = key === 'room'
+      ? '🏠 Salon'
+      : `<span class="dot ${isOnline ? 'ok' : ''}"></span>${escapeHtml(key)}`;
+    pill.onclick = () => switchChatThread(key);
+    bar.appendChild(pill);
+  });
+}
+
+function switchChatThread(key) {
+  chatActiveThread = key;
+  chatUnread[key] = false;
+  const attachBtn = el('chatAttachBtn');
+  attachBtn.disabled = key !== 'room';
+  attachBtn.title = key === 'room'
+    ? 'Joindre un fichier (zip, doc, image…)'
+    : 'Les fichiers sont pour l\'instant partageables uniquement dans le salon commun';
+  renderChatThreadsBar();
+  renderActiveChatThread();
+}
+
+function renderActiveChatThread() {
+  const container = el('chatMessages');
+  container.innerHTML = '';
+  const list = chatThreads[chatActiveThread] || [];
+  if (!list.length) {
+    const hint = chatActiveThread === 'room'
+      ? '👋 Sois le premier à écrire dans le salon commun, ou joins un fichier (même un <code>.zip</code>).'
+      : `👋 Débute une conversation privée avec ${escapeHtml(chatActiveThread)}.`;
+    container.innerHTML = `<div class="ia-welcome">${hint}</div>`;
+    return;
+  }
+  list.forEach((entry) => renderChatEntry(entry));
+  container.scrollTop = container.scrollHeight;
+}
+
+function pushChatEntry(thread, entry) {
+  if (!chatThreads[thread]) chatThreads[thread] = [];
+  chatThreads[thread].push(entry);
+  if (chatActiveThread === thread) {
+    renderChatEntry(entry);
+    el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
+  } else if (entry.type !== 'system') {
+    chatUnread[thread] = true;
+  }
+  renderChatThreadsBar();
+}
+
+function renderChatEntry(entry) {
+  const container = el('chatMessages');
+  const placeholder = container.querySelector('.ia-welcome');
+  if (placeholder) placeholder.remove();
+
+  if (entry.type === 'system') {
+    const div = document.createElement('div');
+    div.className = 'chat-system-line';
+    div.textContent = entry.text;
+    container.appendChild(div);
+    return;
+  }
+
+  if (entry.type === 'file') {
+    const wrap = document.createElement('div');
+    wrap.className = 'ia-msg ' + (entry.self ? 'user' : 'assistant');
+    const badge = document.createElement('div');
+    badge.className = 'ia-badge-mode';
+    badge.textContent = entry.self ? 'Toi' : entry.from;
+    const chip = document.createElement('a');
+    chip.className = 'chat-file-chip';
+    chip.href = entry.url;
+    chip.download = entry.name;
+    const isZip = /\.zip$/i.test(entry.name);
+    chip.innerHTML = `<span class="cf-icon">${isZip ? '🗜' : '📎'}</span><span class="cf-name">${escapeHtml(entry.name)}</span><span class="cf-size">${formatFileSize(entry.size)} · télécharger</span>`;
+    wrap.appendChild(badge);
+    wrap.appendChild(chip);
+    container.appendChild(wrap);
+    return;
+  }
+
   const wrap = document.createElement('div');
-  wrap.className = 'ia-msg ' + (self ? 'user' : 'assistant');
+  wrap.className = 'ia-msg ' + (entry.self ? 'user' : 'assistant');
   const badge = document.createElement('div');
   badge.className = 'ia-badge-mode';
-  badge.textContent = self ? 'Toi' : from;
+  badge.textContent = entry.self ? 'Toi' : entry.from;
   const bubble = document.createElement('div');
   bubble.className = 'ia-bubble';
-  bubble.textContent = text;
+  bubble.textContent = entry.text;
   wrap.appendChild(badge);
   wrap.appendChild(bubble);
-  el('chatMessages').appendChild(wrap);
-  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
+  container.appendChild(wrap);
 }
 
 function appendChatSystem(text) {
-  el('chatWelcome') && el('chatWelcome').remove();
-  const div = document.createElement('div');
-  div.className = 'chat-system-line';
-  div.textContent = text;
-  el('chatMessages').appendChild(div);
-  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
-}
-
-function appendChatFile(from, name, size, url, self) {
-  el('chatWelcome') && el('chatWelcome').remove();
-  const wrap = document.createElement('div');
-  wrap.className = 'ia-msg ' + (self ? 'user' : 'assistant');
-  const badge = document.createElement('div');
-  badge.className = 'ia-badge-mode';
-  badge.textContent = self ? 'Toi' : from;
-  const chip = document.createElement('a');
-  chip.className = 'chat-file-chip';
-  chip.href = url;
-  chip.download = name;
-  const isZip = /\.zip$/i.test(name);
-  chip.innerHTML = `<span class="cf-icon">${isZip ? '🗜' : '📎'}</span><span class="cf-name">${escapeHtml(name)}</span><span class="cf-size">${formatFileSize(size)} · télécharger</span>`;
-  wrap.appendChild(badge);
-  wrap.appendChild(chip);
-  el('chatMessages').appendChild(wrap);
-  el('chatMessages').scrollTop = el('chatMessages').scrollHeight;
+  pushChatEntry('room', { type: 'system', text, ts: Date.now() });
 }
 
 function formatFileSize(bytes) {
@@ -1920,8 +2039,13 @@ function formatFileSize(bytes) {
 function sendChatMessage() {
   const text = el('chatInput').value.trim();
   if (!text || !chatWs || chatWs.readyState !== WebSocket.OPEN) return;
-  chatWs.send(JSON.stringify({ type: 'chat', text }));
-  appendChatMessage(chatConnectedPseudo, text, true);
+  if (chatActiveThread === 'room') {
+    chatWs.send(JSON.stringify({ type: 'chat', text }));
+    pushChatEntry('room', { type: 'chat', from: chatConnectedPseudo, text, ts: Date.now(), self: true });
+  } else {
+    chatWs.send(JSON.stringify({ type: 'dm', to: chatActiveThread, text }));
+    pushChatEntry(chatActiveThread, { type: 'chat', from: chatConnectedPseudo, text, ts: Date.now(), self: true });
+  }
   el('chatInput').value = '';
 }
 
@@ -1935,7 +2059,7 @@ function sendChatFile(file) {
   reader.onload = () => {
     chatWs.send(JSON.stringify({ type: 'file_start', name: file.name, size: file.size, mime: file.type }));
     chatWs.send(reader.result);
-    appendChatFile(chatConnectedPseudo, file.name, file.size, URL.createObjectURL(file), true);
+    pushChatEntry('room', { type: 'file', from: chatConnectedPseudo, name: file.name, size: file.size, url: URL.createObjectURL(file), self: true });
   };
   reader.readAsArrayBuffer(file);
 }
@@ -1967,7 +2091,12 @@ function bindChatBubbleEvents() {
     if (chatWs) { try { chatWs.close(); } catch (e) {} }
     chatWs = null;
     chatConnectedPseudo = null;
-    el('chatMessages').innerHTML = '<div class="ia-welcome" id="chatWelcome">👋 Reconnecte-toi pour continuer à discuter.</div>';
+    chatThreads = { room: [] };
+    chatActiveThread = 'room';
+    chatUnread = {};
+    chatOnlineUsers = [];
+    el('chatThreadsBar').innerHTML = '';
+    el('chatMessages').innerHTML = '<div class="ia-welcome">👋 Reconnecte-toi pour continuer à discuter.</div>';
     el('chatRoomPanel').classList.add('hidden');
     el('chatAuthPanel').classList.remove('hidden');
     el('chatLogoutBtn').classList.add('hidden');
@@ -1982,11 +2111,226 @@ function bindChatBubbleEvents() {
     }
   });
 
-  el('chatAttachBtn').onclick = () => el('chatFileInput').click();
+  el('chatAttachBtn').onclick = () => {
+    if (chatActiveThread !== 'room') return;
+    el('chatFileInput').click();
+  };
   el('chatFileInput').onchange = (e) => {
     const file = e.target.files[0];
     if (file) sendChatFile(file);
     e.target.value = '';
+  };
+}
+
+// =====================================================================
+// RAPPELS DE COURS — notification avant le début d'un créneau récurrent
+// =====================================================================
+
+let edtReminders = [];
+let edtRemindersEnabled = true;
+let edtReminderMinutesBefore = 15;
+let edtNotifiedToday = {};
+
+async function loadEdtReminderSettings() {
+  const s = await window.studyide.getSettings();
+  edtReminders = Array.isArray(s.edtReminders) ? s.edtReminders : [];
+  edtRemindersEnabled = s.edtRemindersEnabled !== false;
+  edtReminderMinutesBefore = Number(s.edtReminderMinutesBefore) || 15;
+}
+
+function startEdtReminderLoop() {
+  checkEdtReminders();
+  setInterval(checkEdtReminders, 30000);
+}
+
+function checkEdtReminders() {
+  if (!edtRemindersEnabled || !edtReminders.length) return;
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7; // 0 = lundi ... 6 = dimanche
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const dateKey = now.toISOString().slice(0, 10);
+
+  edtReminders.forEach((r, idx) => {
+    if (r.day !== day || !r.time) return;
+    const parts = r.time.split(':').map(Number);
+    const startMinutes = parts[0] * 60 + (parts[1] || 0);
+    const diff = startMinutes - nowMinutes;
+    const key = `${idx}-${dateKey}`;
+    if (diff <= edtReminderMinutesBefore && diff >= 0 && !edtNotifiedToday[key]) {
+      edtNotifiedToday[key] = true;
+      fireEdtNotification(r, diff);
+    }
+  });
+}
+
+async function fireEdtNotification(reminder, minutesLeft) {
+  if (typeof Notification === 'undefined') return;
+  const ok = await ensureNotificationPermission();
+  if (!ok) return;
+  const body = `${reminder.label}${reminder.room ? ' — ' + reminder.room : ''} dans ${minutesLeft} min`;
+  const notif = new Notification('🔔 Cours bientôt', { body, silent: false });
+  notif.onclick = () => {
+    window.studyide.focusWindow();
+    window.focus();
+    notif.close();
+  };
+}
+
+function renderEdtReminderList() {
+  const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  const listEl = el('edtReminderList');
+  if (!edtReminders.length) {
+    listEl.innerHTML = '<p class="empty-hint">Aucun rappel pour l\'instant. Ajoute ton premier créneau ci-dessous.</p>';
+    return;
+  }
+  const withIndex = edtReminders.map((r, i) => ({ ...r, _i: i }));
+  withIndex.sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
+  listEl.innerHTML = withIndex.map((r) => `
+    <div class="edt-reminder-item">
+      <span class="eri-day">${days[r.day]}</span>
+      <span class="eri-time">${escapeHtml(r.time)}</span>
+      <span class="eri-label">${escapeHtml(r.label)}</span>
+      <span class="eri-room">${escapeHtml(r.room || '')}</span>
+      <button class="eri-del" data-i="${r._i}" title="Supprimer">✕</button>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.eri-del').forEach((btn) => {
+    btn.onclick = () => {
+      edtReminders.splice(Number(btn.dataset.i), 1);
+      renderEdtReminderList();
+    };
+  });
+}
+
+function openEdtRemindersModal() {
+  el('edtRemindersEnabledCheckbox').checked = edtRemindersEnabled;
+  el('edtReminderMinutesInput').value = edtReminderMinutesBefore;
+  renderEdtReminderList();
+  el('edtRemindersOverlay').classList.add('open');
+}
+
+function closeEdtRemindersModal() {
+  el('edtRemindersOverlay').classList.remove('open');
+}
+
+function bindEdtRemindersEvents() {
+  el('edtRemindersBtn').onclick = openEdtRemindersModal;
+  el('edtRemindersCloseBtn').onclick = closeEdtRemindersModal;
+  el('edtRemindersOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'edtRemindersOverlay') closeEdtRemindersModal();
+  });
+
+  el('edtAddReminderBtn').onclick = () => {
+    const day = Number(el('edtNewReminderDay').value);
+    const time = el('edtNewReminderTime').value;
+    const label = el('edtNewReminderLabel').value.trim();
+    const room = el('edtNewReminderRoom').value.trim();
+    if (!time || !label) return;
+    edtReminders.push({ day, time, label, room });
+    el('edtNewReminderLabel').value = '';
+    el('edtNewReminderRoom').value = '';
+    renderEdtReminderList();
+  };
+
+  el('edtRemindersSaveBtn').onclick = async () => {
+    edtRemindersEnabled = el('edtRemindersEnabledCheckbox').checked;
+    edtReminderMinutesBefore = Math.max(1, Number(el('edtReminderMinutesInput').value) || 15);
+    const s = await window.studyide.getSettings();
+    await window.studyide.setSettings({
+      ...s,
+      edtReminders,
+      edtRemindersEnabled,
+      edtReminderMinutesBefore
+    });
+    edtNotifiedToday = {};
+    closeEdtRemindersModal();
+  };
+}
+
+// =====================================================================
+// EMPLOI DU TEMPS — affiche le HyperPlanning de l'utilisateur dans l'appli
+// =====================================================================
+
+let edtInitialized = false;
+let edtLoadedUrl = null;
+
+function isPlausibleUrl(value) {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+function setEdtUrlStatus(text, isError) {
+  const s = el('edtUrlStatus');
+  s.textContent = text || '';
+  s.className = 'chat-auth-status' + (isError ? ' err' : '');
+}
+
+function showEdtWebview(url) {
+  el('edtEmptyState').classList.add('hidden');
+  el('edtWebview').classList.remove('hidden');
+  el('edtRefreshBtn').classList.remove('hidden');
+  el('edtOpenBrowserBtn').classList.remove('hidden');
+  el('edtSettingsBtn').classList.remove('hidden');
+  if (edtLoadedUrl !== url) {
+    el('edtWebview').src = url;
+    edtLoadedUrl = url;
+  }
+}
+
+function showEdtForm(prefillUrl) {
+  el('edtWebview').classList.add('hidden');
+  el('edtEmptyState').classList.remove('hidden');
+  el('edtRefreshBtn').classList.add('hidden');
+  el('edtOpenBrowserBtn').classList.add('hidden');
+  el('edtSettingsBtn').classList.add('hidden');
+  if (prefillUrl) el('edtUrlInput').value = prefillUrl;
+  setEdtUrlStatus('', false);
+}
+
+async function initEdtMode() {
+  if (edtInitialized) return;
+  edtInitialized = true;
+  const s = await window.studyide.getSettings();
+  if (s.hplanningUrl && isPlausibleUrl(s.hplanningUrl)) {
+    showEdtWebview(s.hplanningUrl);
+  } else {
+    showEdtForm(s.hplanningUrl || '');
+  }
+}
+
+function bindEdtEvents() {
+  el('edtSaveUrlBtn').onclick = async () => {
+    const url = el('edtUrlInput').value.trim();
+    if (!isPlausibleUrl(url)) {
+      setEdtUrlStatus('Lien invalide : colle l\'adresse complète (https://...).', true);
+      return;
+    }
+    const s = await window.studyide.getSettings();
+    await window.studyide.setSettings({ ...s, hplanningUrl: url });
+    setEdtUrlStatus('Enregistré ✅', false);
+    showEdtWebview(url);
+  };
+
+  el('edtUrlInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') el('edtSaveUrlBtn').click();
+  });
+
+  el('edtRefreshBtn').onclick = () => {
+    const webview = el('edtWebview');
+    if (webview.src) webview.reload();
+  };
+
+  el('edtOpenBrowserBtn').onclick = () => {
+    if (edtLoadedUrl) window.studyide.openUrl(edtLoadedUrl);
+  };
+
+  el('edtSettingsBtn').onclick = async () => {
+    const s = await window.studyide.getSettings();
+    showEdtForm(s.hplanningUrl || '');
   };
 }
 
