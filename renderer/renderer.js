@@ -155,6 +155,11 @@ async function init() {
   await loadEditorSettings();
   applyEditorSettings(cm);
 
+  const bubbleSettings = await window.studyide.getSettings();
+  el('iaBubbleBtn').classList.toggle('hidden', bubbleSettings.showIaBubble === false);
+  el('notesBubbleBtn').classList.toggle('hidden', bubbleSettings.showNotesBubble === false);
+  el('chatBubbleBtn').classList.toggle('hidden', bubbleSettings.showChatBubble === false);
+
   const env = await window.studyide.checkEnv();
   el('dotPython').classList.toggle('ok', env.python);
   el('dotJava').classList.toggle('ok', env.java && env.javac);
@@ -1795,6 +1800,9 @@ async function openAppSettingsModal() {
   const s = await window.studyide.getSettings();
   el('minimizeToTrayCheckbox').checked = s.minimizeToTray !== false;
   el('iaNotifCheckbox').checked = s.iaNotifications !== false;
+  el('showIaBubbleCheckbox').checked = s.showIaBubble !== false;
+  el('showNotesBubbleCheckbox').checked = s.showNotesBubble !== false;
+  el('showChatBubbleCheckbox').checked = s.showChatBubble !== false;
   el('exportStatus').textContent = '';
   el('exportStatus').className = 'export-status';
   el('shortcutStatus').textContent = '';
@@ -1815,6 +1823,27 @@ function bindAppSettingsEvents() {
     if (e.target.checked) await ensureNotificationPermission();
     const s = await window.studyide.getSettings();
     await window.studyide.setSettings({ ...s, iaNotifications: e.target.checked });
+  };
+
+  el('showIaBubbleCheckbox').onchange = async (e) => {
+    el('iaBubbleBtn').classList.toggle('hidden', !e.target.checked);
+    if (!e.target.checked) closeIaDrawer();
+    const s = await window.studyide.getSettings();
+    await window.studyide.setSettings({ ...s, showIaBubble: e.target.checked });
+  };
+
+  el('showNotesBubbleCheckbox').onchange = async (e) => {
+    el('notesBubbleBtn').classList.toggle('hidden', !e.target.checked);
+    if (!e.target.checked) closeNotesDrawer();
+    const s = await window.studyide.getSettings();
+    await window.studyide.setSettings({ ...s, showNotesBubble: e.target.checked });
+  };
+
+  el('showChatBubbleCheckbox').onchange = async (e) => {
+    el('chatBubbleBtn').classList.toggle('hidden', !e.target.checked);
+    if (!e.target.checked) closeChatDrawer();
+    const s = await window.studyide.getSettings();
+    await window.studyide.setSettings({ ...s, showChatBubble: e.target.checked });
   };
 
   el('exportDataBtn').onclick = async (e) => {
