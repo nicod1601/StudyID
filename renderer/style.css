@@ -93,6 +93,21 @@ body {
 }
 .hidden { display: none !important; }
 
+/* ---------- Mode plein écran de l'éditeur ---------- */
+body.editor-fullscreen #app { grid-template-columns: 1fr; }
+body.editor-fullscreen .sidebar { display: none; }
+body.editor-fullscreen #codeContent.content-wrapper,
+body.editor-fullscreen #projetContent.content-wrapper {
+  grid-template-columns: 1fr;
+}
+body.editor-fullscreen .exercises-panel { display: none; }
+body.editor-fullscreen .project-panel { display: none; }
+#fullscreenBtn.active, #fullscreenBtnProjet.active {
+  background: var(--bg-3);
+  color: var(--accent);
+  border-color: rgba(79,227,255,0.4);
+}
+
 .mode-switch {
   display: flex;
   padding: 10px;
@@ -1515,6 +1530,36 @@ body {
   border-radius: 5px;
 }
 .edt-reminder-item .eri-del:hover { color: var(--danger); background: var(--bg-3); }
+
+/* ---------- Visualisation des caractères invisibles (espaces/tabulations) ---------- */
+/* CodeMirror fusionne les tokens adjacents de même style en un seul span :
+   on ne peut donc pas compter sur un ::before par caractère pour les
+   espaces. On utilise à la place un motif d'arrière-plan répété, calé sur
+   la largeur d'un caractère (1ch, exact en police monospace) — un point
+   par espace, quel que soit le nombre d'espaces regroupés dans le span. */
+.cm-ws-space {
+  background-image: radial-gradient(circle, var(--text-low) 1px, transparent 1.3px);
+  background-repeat: repeat-x;
+  background-position: left center;
+  background-size: 1ch 1ch;
+}
+
+/* Les tabulations, elles, gardent un span natif CodeMirror par caractère
+   réel (classe .cm-tab) même quand plusieurs tabulations se suivent : on
+   peut donc cibler chacune individuellement avec un ::before. */
+.cm-ws-tab .cm-tab {
+  position: relative;
+}
+.cm-ws-tab .cm-tab::before {
+  content: "→";
+  position: absolute;
+  left: 1px;
+  top: 0;
+  color: var(--text-low);
+  opacity: 0.55;
+  font-size: 0.78em;
+  pointer-events: none;
+}
 
 .notes-drawer-hint {
   font-size: 11.5px;

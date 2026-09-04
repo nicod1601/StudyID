@@ -1,0 +1,16 @@
+[
+  {
+    "type": "dm",
+    "from": "nicod16",
+    "to": "nicod16 2",
+    "text": "salut",
+    "ts": 1788383252121
+  },
+  {
+    "type": "dm",
+    "from": "nicod16 2",
+    "to": "nicod16",
+    "text": "salut",
+    "ts": 1788383256649
+  }
+]

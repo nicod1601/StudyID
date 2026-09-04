@@ -37,6 +37,7 @@
       <div class="quick-actions">
         <button class="quick-action-btn" id="viewNotesQuickBtn">📌 Voir Note</button>
         <button class="quick-action-btn" id="butCalcBtn">🎓 Calcul note-BUT</button>
+        <button class="quick-action-btn" id="editorSettingsBtn">✏ Réglages de l'éditeur</button>
         <button class="quick-action-btn" id="appSettingsBtn">⚙ Paramètres de l'appli</button>
       </div>
 
@@ -74,6 +75,7 @@
             <button class="btn-run" id="runBtn" disabled>▶ Exécuter</button>
             <button class="btn-ghost" id="noteSelectionBtn" disabled title="Enregistrer le texte sélectionné dans Mes notes">📌 Noter</button>
             <button class="btn-save" id="saveBtn" disabled>💾 Enregistrer</button>
+            <button class="btn-ghost" id="fullscreenBtn" title="Plein écran (masque la sidebar et les panneaux)">⛶</button>
           </div>
         </div>
         <div class="editor-host" id="editorHost"></div>
@@ -140,6 +142,7 @@
         <div class="project-editor-toolbar hidden" id="projectEditorToolbar">
           <span class="pet-hint">Ctrl+S pour enregistrer</span>
           <button class="btn-ghost" id="projectNoteSelectionBtn" disabled title="Enregistrer le texte sélectionné dans Mes notes">📌 Noter la sélection</button>
+          <button class="btn-ghost" id="fullscreenBtnProjet" title="Plein écran (masque la sidebar et les panneaux)">⛶</button>
         </div>
         <div class="editor-host" id="projectEditorHost"></div>
 
@@ -336,6 +339,40 @@
   </aside>
 
   <!-- Modale : réglages IA -->
+  <!-- Modale : réglages de l'éditeur -->
+  <div class="modal-overlay" id="editorSettingsOverlay">
+    <div class="modal modal-md">
+      <h3>✏ Réglages de l'éditeur</h3>
+
+      <label>Taille d'indentation</label>
+      <select id="editorTabSizeSelect">
+        <option value="2">2 espaces</option>
+        <option value="4">4 espaces</option>
+        <option value="8">8 espaces</option>
+      </select>
+
+      <label class="ia-context-toggle" style="margin-top:16px;">
+        <input type="checkbox" id="editorIndentWithTabsCheckbox" />
+        Indenter avec des tabulations réelles (au lieu d'espaces)
+      </label>
+
+      <label class="ia-context-toggle">
+        <input type="checkbox" id="editorShowWhitespaceCheckbox" />
+        Afficher les caractères invisibles — espaces (·) et tabulations (→)
+      </label>
+
+      <p class="settings-hint">
+        S'applique aux éditeurs de code (mode Code et mode Projet). Purement
+        visuel : ça n'ajoute ni ne modifie aucun caractère dans tes fichiers.
+      </p>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" id="editorSettingsCloseBtn">Fermer</button>
+        <button class="btn-primary" id="editorSettingsSaveBtn" style="width:auto; padding:9px 18px;">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modale : rappels de cours (EDT) -->
   <div class="modal-overlay" id="edtRemindersOverlay">
     <div class="modal modal-wide" style="width:560px; max-height:85vh; overflow-y:auto;">
@@ -545,6 +582,7 @@
   <script src="vendor/codemirror/mode/sql/sql.js"></script>
   <script src="vendor/codemirror/mode/php/php.js"></script>
   <script src="vendor/codemirror/addon/mode/simple.js"></script>
+  <script src="vendor/codemirror/addon/mode/overlay.js"></script>
   <script src="vendor/codemirror/mode/rust/rust.js"></script>
   <script src="vendor/codemirror/mode/go/go.js"></script>
   <script src="vendor/codemirror/mode/ruby/ruby.js"></script>

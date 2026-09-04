@@ -636,7 +636,7 @@ const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
 
 function readSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15 };
+    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15, editorTabSize: 4, editorIndentWithTabs: false, editorShowWhitespace: false };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
     return initial;
   }
@@ -651,9 +651,12 @@ function readSettings() {
     if (!Array.isArray(s.edtReminders)) s.edtReminders = [];
     if (s.edtRemindersEnabled === undefined) s.edtRemindersEnabled = true;
     if (s.edtReminderMinutesBefore === undefined) s.edtReminderMinutesBefore = 15;
+    if (s.editorTabSize === undefined) s.editorTabSize = 4;
+    if (s.editorIndentWithTabs === undefined) s.editorIndentWithTabs = false;
+    if (s.editorShowWhitespace === undefined) s.editorShowWhitespace = false;
     return s;
   } catch (e) {
-    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15 };
+    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15, editorTabSize: 4, editorIndentWithTabs: false, editorShowWhitespace: false };
   }
 }
 
