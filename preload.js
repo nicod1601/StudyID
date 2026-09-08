@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('studyide', {
 
   openUrl: (url) => ipcRenderer.invoke('app:openUrl', url),
 
+  importEdtIcs: () => ipcRenderer.invoke('edt:importIcsDialog'),
+  getEdtCache: () => ipcRenderer.invoke('edt:getCache'),
+
   getLocalAIStatus: () => ipcRenderer.invoke('localAI:status'),
   listLocalAIModels: () => ipcRenderer.invoke('localAI:listModels'),
   downloadLocalAI: (modelId) => ipcRenderer.invoke('localAI:download', { modelId }),

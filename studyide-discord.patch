@@ -1,0 +1,103 @@
+diff --git a/renderer/index.html b/renderer/index.html
+index 8f2ac9a..0a968d1 100644
+--- a/renderer/index.html
++++ b/renderer/index.html
+@@ -32,6 +32,7 @@
+         <button class="mode-btn" id="modeCoursBtn">📚 Cours</button>
+         <button class="mode-btn" id="modeProjetBtn">🗂 Projet</button>
+         <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
++        <button class="mode-btn" id="modeDiscordBtn">🎮 Discord</button>
+       </div>
+ 
+       <div class="quick-actions">
+@@ -198,6 +199,21 @@
+       </section>
+     </div>
+ 
++    <!-- ===================== MODE DISCORD ===================== -->
++    <div class="content-wrapper edt-wrapper hidden" id="discordContent">
++      <section class="edt-area">
++        <div class="edt-toolbar">
++          <div class="edt-title">🎮 Discord</div>
++          <div class="actions">
++            <button class="btn-ghost" id="discordRefreshBtn" title="Actualiser">🔄 Actualiser</button>
++            <button class="btn-ghost" id="discordOpenBrowserBtn" title="Ouvrir dans le navigateur">🌐 Navigateur</button>
++          </div>
++        </div>
++
++        <webview id="discordWebview" src="https://discord.com/app" allowpopups partition="persist:discord"></webview>
++      </section>
++    </div>
++
+     </div>
+   </div>
+ 
+diff --git a/renderer/renderer.js b/renderer/renderer.js
+index 7818210..2e56b9f 100644
+--- a/renderer/renderer.js
++++ b/renderer/renderer.js
+@@ -174,6 +174,7 @@ async function init() {
+   bindAppSettingsEvents();
+   bindChatBubbleEvents();
+   bindEdtEvents();
++  bindDiscordEvents();
+   bindEdtRemindersEvents();
+   bindEditorSettingsEvents();
+   bindFullscreenEvents();
+@@ -372,10 +373,12 @@ function switchMode(mode) {
+   el('modeCoursBtn').classList.toggle('active', mode === 'cours');
+   el('modeProjetBtn').classList.toggle('active', mode === 'projet');
+   el('modeEdtBtn').classList.toggle('active', mode === 'edt');
++  el('modeDiscordBtn').classList.toggle('active', mode === 'discord');
+   el('codeContent').classList.toggle('hidden', mode !== 'code');
+   el('coursContent').classList.toggle('hidden', mode !== 'cours');
+   el('projetContent').classList.toggle('hidden', mode !== 'projet');
+   el('edtContent').classList.toggle('hidden', mode !== 'edt');
++  el('discordContent').classList.toggle('hidden', mode !== 'discord');
+   if (mode === 'cours' && currentCourse) renderDocList();
+   if (mode === 'projet') initProjectMode();
+   if (mode === 'edt') initEdtMode();
+@@ -612,6 +615,7 @@ function bindCoursEvents() {
+   el('modeCoursBtn').onclick = () => switchMode('cours');
+   el('modeProjetBtn').onclick = () => switchMode('projet');
+   el('modeEdtBtn').onclick = () => switchMode('edt');
++  el('modeDiscordBtn').onclick = () => switchMode('discord');
+ 
+   el('importPdfBtn').onclick = async () => {
+     if (!currentCourse) { alert('Choisis d’abord une matière à gauche.'); return; }
+@@ -2485,4 +2489,21 @@ function bindEdtEvents() {
+   };
+ }
+ 
++// =====================================================================
++// DISCORD — affiche discord.com/app dans une webview dédiée
++// =====================================================================
++
++const DISCORD_URL = 'https://discord.com/app';
++
++function bindDiscordEvents() {
++  el('discordRefreshBtn').onclick = () => {
++    const webview = el('discordWebview');
++    if (webview.src) webview.reload();
++  };
++
++  el('discordOpenBrowserBtn').onclick = () => {
++    window.studyide.openUrl(DISCORD_URL);
++  };
++}
++
+ init();
+diff --git a/renderer/style.css b/renderer/style.css
+index 907d550..af9f824 100644
+--- a/renderer/style.css
++++ b/renderer/style.css
+@@ -1445,7 +1445,8 @@ body.editor-fullscreen .project-panel { display: none; }
+   color: var(--accent);
+ }
+ 
+-#edtWebview {
++#edtWebview,
++#discordWebview {
+   flex: 1;
+   width: 100%;
+   min-height: 0;
