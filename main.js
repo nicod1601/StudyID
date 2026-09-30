@@ -641,67 +641,20 @@ ipcMain.handle('project:delete', (evt, targetPath) => {
   }
 });
 
-// ---------- IPC : Terminal intégré (console de commandes persistante) ----------
-// Remarque : ceci est une "console" qui exécute des commandes ligne par ligne via
-// un shell persistant (cmd.exe / bash), pas un vrai pseudo-terminal (pty). Les
-// programmes interactifs plein écran (vim, htop...) ou colorés ne s'afficheront
-// pas correctement, mais tout le reste (npm, git, python, javac...) fonctionne.
+// ---------- IPC : Terminal intégré + Développement Web ----------
+// Tout est dans web-dev.js : terminaux (node-pty, avec repli sur pipes),
+// détection de framework, serveurs de dev, live reload, dépendances, templates.
 
-const terminals = new Map(); // id -> { proc, cwd }
-let terminalSeq = 0;
-
-function shellCommand() {
-  if (process.platform === 'win32') return { cmd: 'cmd.exe', args: [] };
-  return { cmd: process.env.SHELL || '/bin/bash', args: ['-i'] };
-}
-
-ipcMain.handle('terminal:start', (evt, { cwd }) => {
-  const id = `term-${++terminalSeq}`;
-  const { cmd, args } = shellCommand();
-  const proc = spawn(cmd, args, {
-    cwd: fs.existsSync(cwd) ? cwd : WORKSPACE_DIR,
-    env: process.env,
-    windowsHide: true
-  });
-  terminals.set(id, { proc, cwd });
-  proc.stdout.on('data', (d) => {
-    if (mainWindow) mainWindow.webContents.send('terminal:data', { id, chunk: d.toString() });
-  });
-  proc.stderr.on('data', (d) => {
-    if (mainWindow) mainWindow.webContents.send('terminal:data', { id, chunk: d.toString() });
-  });
-  proc.on('exit', (code) => {
-    if (mainWindow) mainWindow.webContents.send('terminal:exit', { id, code });
-    terminals.delete(id);
-  });
-  return { ok: true, id };
-});
-
-ipcMain.handle('terminal:write', (evt, { id, data }) => {
-  const t = terminals.get(id);
-  if (!t) return { ok: false, error: 'Terminal introuvable.' };
-  try {
-    t.proc.stdin.write(data);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
-
-ipcMain.handle('terminal:kill', (evt, { id }) => {
-  const t = terminals.get(id);
-  if (t) {
-    try { t.proc.kill(); } catch (e) {}
-    terminals.delete(id);
-  }
-  return { ok: true };
+const webDev = require('./web-dev')({
+  ipcMain,
+  dialog,
+  getMainWindow: () => mainWindow,
+  workspaceDir: WORKSPACE_DIR
 });
 
 app.on('before-quit', () => {
   isQuitting = true;
-  for (const { proc } of terminals.values()) {
-    try { proc.kill(); } catch (e) {}
-  }
+  webDev.killAll();
 });
 
 // ---------- IPC : exécution de code ----------

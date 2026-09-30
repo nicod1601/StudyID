@@ -9,7 +9,8 @@
     "start": "electron .",
     "dist:linux": "electron-builder --linux deb AppImage",
     "dist:win": "electron-builder --win nsis portable",
-    "dist:all": "electron-builder -mwl"
+    "dist:all": "electron-builder -mwl",
+    "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
     "electron": "^37.0.0",
@@ -24,12 +25,14 @@
     "files": [
       "main.js",
       "preload.js",
+      "web-dev.js",
       "renderer/**/*",
       "data/**/*"
     ],
     "asarUnpack": [
       "node_modules/node-llama-cpp/**/*",
-      "node_modules/@node-llama-cpp/**/*"
+      "node_modules/@node-llama-cpp/**/*",
+      "node_modules/node-pty/**/*"
     ],
     "linux": {
       "target": [
@@ -51,6 +54,7 @@
   },
   "dependencies": {
     "node-llama-cpp": "^3.19.1",
-    "pdfjs-dist": "^3.11.174"
+    "pdfjs-dist": "^3.11.174",
+    "node-pty": "^1.1.0"
   }
 }

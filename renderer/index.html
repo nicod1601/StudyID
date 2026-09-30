@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="vendor/codemirror/theme/dracula.css" />
 <link rel="stylesheet" href="vendor/codemirror/addon/dialog/dialog.css" />
 <link rel="stylesheet" href="vendor/codemirror/addon/fold/foldgutter.css" />
+<link rel="stylesheet" href="vendor/codemirror/addon/hint/show-hint.css" />
+<link rel="stylesheet" href="vendor/xterm/xterm.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -31,6 +33,7 @@
         <button class="mode-btn active" id="modeCodeBtn">💻 Code</button>
         <button class="mode-btn" id="modeCoursBtn">📚 Cours</button>
         <button class="mode-btn" id="modeProjetBtn">🗂 Projet</button>
+        <button class="mode-btn" id="modeWebBtn">🌐 Web</button>
         <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
         <button class="mode-btn" id="modeDiscordBtn">🎮 Discord</button>
       </div>
@@ -142,29 +145,138 @@
         <div class="project-tabbar" id="projectTabbar"></div>
         <div class="project-editor-toolbar hidden" id="projectEditorToolbar">
           <span class="pet-hint">Ctrl+S pour enregistrer</span>
+          <button class="btn-ghost" id="symbolToggleBtn" title="Afficher/masquer la barre de caractères (accolades, backticks, =>…)">⌨ Symboles</button>
           <button class="btn-ghost" id="projectNoteSelectionBtn" disabled title="Enregistrer le texte sélectionné dans Mes notes">📌 Noter la sélection</button>
           <button class="btn-ghost" id="fullscreenBtnProjet" title="Plein écran (masque la sidebar et les panneaux)">⛶</button>
         </div>
+        <div class="symbol-bar hidden" id="projectSymbolBar" aria-label="Caractères spéciaux"></div>
         <div class="editor-host" id="projectEditorHost"></div>
 
         <div class="project-terminal-panel" id="projectTerminalPanel">
           <div class="terminal-header">
-            <span>🖥 Terminal <span class="terminal-cwd" id="terminalCwd"></span></span>
+            <div class="terminal-tabs" id="projectTermTabs"></div>
             <div class="actions">
+              <span class="terminal-cwd" id="terminalCwd"></span>
               <button class="btn-run" id="runActiveFileBtn" disabled>▶ Exécuter le fichier</button>
-              <button class="btn-ghost" id="restartTerminalBtn" title="Redémarrer le terminal">⟳</button>
+              <button class="btn-ghost" id="newTerminalBtn" title="Nouveau terminal">＋</button>
+              <button class="btn-ghost" id="restartTerminalBtn" title="Redémarrer le terminal actif">⟳</button>
               <button class="btn-ghost" id="toggleTerminalBtn" title="Replier/déplier">▾</button>
             </div>
           </div>
           <div class="terminal-body" id="terminalBody">
-            <pre class="terminal-output" id="terminalOutput"></pre>
-            <div class="terminal-input-row">
-              <span class="terminal-prompt">$</span>
-              <input type="text" id="terminalInput" placeholder="Tape une commande et appuie sur Entrée…" autocomplete="off" spellcheck="false" />
+            <div class="term-host" id="projectTermHost"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+
+    <!-- ===================== MODE WEB ===================== -->
+    <div class="content-wrapper web-wrapper hidden" id="webContent">
+      <section class="web-panel">
+        <div class="panel-header web-panel-header">
+          <h2 id="webTitle" title="">🌐 Développement Web</h2>
+          <div class="web-open-row">
+            <button class="btn-primary" id="webOpenBtn">📂 Ouvrir</button>
+            <button class="btn-ghost web-outline-btn" id="webNewBtn">✨ Nouveau</button>
+            <button class="btn-ghost web-outline-btn" id="webRefreshBtn" title="Re-détecter le projet">⟳</button>
+          </div>
+        </div>
+        <div class="web-scroll" id="webScroll">
+          <div class="empty-hint" id="webEmpty">Ouvre un dossier ou crée un projet (HTML, React, Vue, Next.js, Express…) pour lancer un serveur et voir le résultat en direct.</div>
+          <div id="webProjectBody" class="hidden">
+            <div class="web-card" id="webProjectCard"></div>
+            <div class="web-card">
+              <h3>Serveurs</h3>
+              <div class="web-actions" id="webRunActions"></div>
+              <div id="webServers" class="web-servers"></div>
+            </div>
+            <div class="web-card" id="webScriptsCard">
+              <h3>Scripts</h3>
+              <div id="webScripts" class="web-scripts"></div>
+            </div>
+            <div class="web-card" id="webDepsCard">
+              <h3>Dépendances</h3>
+              <div class="web-dep-add">
+                <input type="text" id="webDepInput" placeholder="ex : axios tailwindcss" spellcheck="false" autocomplete="off" />
+                <label class="web-dep-dev"><input type="checkbox" id="webDepDev" /> dev</label>
+                <button class="btn-ghost web-outline-btn" id="webDepAddBtn">Ajouter</button>
+              </div>
+              <div class="web-actions">
+                <button class="btn-ghost web-outline-btn" id="webDepInstallBtn">⬇ Installer</button>
+                <button class="btn-ghost web-outline-btn" id="webDepUpdateBtn">⬆ Mettre à jour</button>
+              </div>
+              <input type="text" id="webDepFilter" class="web-dep-filter" placeholder="Filtrer…" spellcheck="false" />
+              <div id="webDeps" class="web-deps"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <main class="web-main">
+        <div class="web-preview-bar">
+          <button class="btn-ghost" id="webBackBtn" title="Page précédente">←</button>
+          <button class="btn-ghost" id="webReloadBtn" title="Recharger (sans cache)">⟳</button>
+          <input type="text" id="webUrlInput" placeholder="http://localhost:5173" spellcheck="false" />
+          <div class="web-device-switch" id="webDeviceSwitch">
+            <button class="btn-ghost active" data-device="desktop" title="Bureau">🖥</button>
+            <button class="btn-ghost" data-device="tablet" title="Tablette (768×1024)">▭</button>
+            <button class="btn-ghost" data-device="mobile" title="Mobile (390×844)">📱</button>
+          </div>
+          <button class="btn-ghost" id="webDevtoolsBtn" title="Outils de développement de la page">🛠</button>
+          <button class="btn-ghost" id="webExternalBtn" title="Ouvrir dans le navigateur">↗</button>
+        </div>
+        <div class="web-preview" id="webPreview">
+          <div class="web-preview-empty" id="webPreviewEmpty">
+            <div class="wpe-icon">🌐</div>
+            <div>Lance un serveur pour voir ton site ici.</div>
+            <div class="wpe-sub">L’adresse est détectée automatiquement dans la sortie du serveur.</div>
+          </div>
+        </div>
+        <div class="web-bottom" id="webBottom">
+          <div class="web-bottom-tabs">
+            <button class="web-btab active" data-pane="server">📡 Serveur</button>
+            <button class="web-btab" data-pane="task">📦 Tâches npm</button>
+            <button class="web-btab" data-pane="console">🧾 Console de la page <span class="web-badge hidden" id="webConsoleBadge">0</span></button>
+            <button class="web-btab" data-pane="terminal">🖥 Terminal</button>
+            <span class="web-bottom-spacer"></span>
+            <button class="btn-ghost" id="webNewTermBtn" title="Nouveau terminal">＋</button>
+            <button class="btn-ghost" id="webClearLogsBtn" title="Effacer l’affichage">🧹</button>
+            <button class="btn-ghost" id="webToggleBottomBtn" title="Replier/déplier">▾</button>
+          </div>
+          <div class="web-bottom-body">
+            <div class="web-pane active" data-pane="server"><div class="term-host" id="webServerLogHost"></div></div>
+            <div class="web-pane" data-pane="task"><div class="term-host" id="webTaskLogHost"></div></div>
+            <div class="web-pane" data-pane="console"><div class="web-console" id="webConsole"></div></div>
+            <div class="web-pane web-pane-terminal" data-pane="terminal">
+              <div class="terminal-tabs web-term-tabs" id="webTermTabs"></div>
+              <div class="term-host" id="webTermHost"></div>
             </div>
           </div>
         </div>
       </main>
+    </div>
+
+    <!-- Modale : nouveau projet web -->
+    <div class="modal-overlay" id="webNewModal">
+      <div class="modal modal-md">
+        <h3>✨ Nouveau projet web</h3>
+        <label for="webTplSelect">Modèle</label>
+        <select id="webTplSelect"></select>
+        <div class="web-tpl-desc" id="webTplDesc"></div>
+        <label for="webNewName">Nom du projet</label>
+        <input type="text" id="webNewName" value="mon-site" spellcheck="false" autocomplete="off" />
+        <label>Dossier parent</label>
+        <div class="web-parent-row">
+          <input type="text" id="webNewParent" readonly />
+          <button class="btn-ghost web-outline-btn" id="webNewPickBtn">Choisir…</button>
+        </div>
+        <div class="web-form-error" id="webNewError"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost web-outline-btn" id="webNewCancelBtn">Annuler</button>
+          <button class="btn-primary" id="webNewCreateBtn" style="width:auto">Créer</button>
+        </div>
+      </div>
     </div>
 
     <!-- ===================== MODE EMPLOI DU TEMPS ===================== -->
@@ -602,6 +714,28 @@
   <script src="vendor/codemirror/mode/go/go.js"></script>
   <script src="vendor/codemirror/mode/ruby/ruby.js"></script>
   <script src="vendor/codemirror/mode/yaml/yaml.js"></script>
+  <script src="vendor/codemirror/mode/jsx/jsx.js"></script>
+  <script src="vendor/codemirror/mode/coffeescript/coffeescript.js"></script>
+  <script src="vendor/codemirror/mode/sass/sass.js"></script>
+  <script src="vendor/codemirror/mode/stylus/stylus.js"></script>
+  <script src="vendor/codemirror/mode/pug/pug.js"></script>
+  <script src="vendor/codemirror/mode/handlebars/handlebars.js"></script>
+  <script src="vendor/codemirror/addon/mode/multiplex.js"></script>
+  <script src="vendor/codemirror/mode/vue/vue.js"></script>
+  <script src="vendor/codemirror/mode/dockerfile/dockerfile.js"></script>
+  <script src="vendor/codemirror/mode/toml/toml.js"></script>
+  <script src="vendor/codemirror/mode/properties/properties.js"></script>
+  <script src="vendor/codemirror/mode/diff/diff.js"></script>
+  <script src="vendor/codemirror/addon/hint/show-hint.js"></script>
+  <script src="vendor/codemirror/addon/hint/xml-hint.js"></script>
+  <script src="vendor/codemirror/addon/hint/html-hint.js"></script>
+  <script src="vendor/codemirror/addon/hint/css-hint.js"></script>
+  <script src="vendor/codemirror/addon/hint/javascript-hint.js"></script>
+  <script src="vendor/codemirror/addon/hint/anyword-hint.js"></script>
+  <script src="vendor/emmet/emmet-codemirror.js"></script>
+  <script src="vendor/xterm/xterm.js"></script>
+  <script src="vendor/xterm/addon-fit.js"></script>
+  <script src="vendor/xterm/addon-web-links.js"></script>
   <script src="vendor/codemirror/addon/edit/closebrackets.js"></script>
   <script src="vendor/codemirror/addon/edit/matchbrackets.js"></script>
   <script src="vendor/codemirror/addon/edit/closetag.js"></script>
@@ -617,6 +751,7 @@
   <script src="vendor/codemirror/addon/display/placeholder.js"></script>
   <script src="vendor/codemirror/addon/comment/comment.js"></script>
   <script src="vendor/pdfjs/pdf.min.js"></script>
+  <script src="webdev.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

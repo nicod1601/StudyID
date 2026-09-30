@@ -374,14 +374,17 @@ function switchMode(mode) {
   el('modeProjetBtn').classList.toggle('active', mode === 'projet');
   el('modeEdtBtn').classList.toggle('active', mode === 'edt');
   el('modeDiscordBtn').classList.toggle('active', mode === 'discord');
+  el('modeWebBtn').classList.toggle('active', mode === 'web');
   el('codeContent').classList.toggle('hidden', mode !== 'code');
   el('coursContent').classList.toggle('hidden', mode !== 'cours');
   el('projetContent').classList.toggle('hidden', mode !== 'projet');
   el('edtContent').classList.toggle('hidden', mode !== 'edt');
   el('discordContent').classList.toggle('hidden', mode !== 'discord');
+  el('webContent').classList.toggle('hidden', mode !== 'web');
   if (mode === 'cours' && currentCourse) renderDocList();
   if (mode === 'projet') initProjectMode();
   if (mode === 'edt') initEdtMode();
+  if (mode === 'web') WebDev.onShow();
   updateIaContextChip();
 }
 
@@ -616,6 +619,7 @@ function bindCoursEvents() {
   el('modeProjetBtn').onclick = () => switchMode('projet');
   el('modeEdtBtn').onclick = () => switchMode('edt');
   el('modeDiscordBtn').onclick = () => switchMode('discord');
+  el('modeWebBtn').onclick = () => switchMode('web');
 
   el('importPdfBtn').onclick = async () => {
     if (!currentCourse) { alert('Choisis d’abord une matière à gauche.'); return; }
@@ -659,8 +663,7 @@ let projectStarted = false;   // évite de réinitialiser à chaque switchMode
 let openTabs = [];            // [{ path, name, ext, dirty, value, mode, scrollInfo, cursor }]
 let activeTabPath = null;
 let expandedDirs = new Set(); // chemins de dossiers actuellement dépliés
-let terminalId = null;
-let terminalBusy = false;
+let projectTerms = null;      // terminaux xterm.js du mode Projet (WebDev.TerminalTabs)
 
 const EXT_ICONS = {
   py: '🐍', java: '☕', js: '🟨', mjs: '🟨', cjs: '🟨', jsx: '🟨',
@@ -677,10 +680,16 @@ function extOf(name) {
 
 function iconFor(name, isDirectory, isOpenDir) {
   if (isDirectory) return isOpenDir ? '📂' : '📁';
-  return EXT_ICONS[extOf(name)] || '📄';
+  const lower = name.toLowerCase();
+  if (lower === 'dockerfile') return '🐳';
+  if (lower === 'package.json') return '📦';
+  const ext = extOf(name);
+  return (window.WebDev && window.WebDev.extraIcons[ext]) || EXT_ICONS[ext] || '📄';
 }
 
 function cmModeFor(name) {
+  const webMode = window.WebDev && window.WebDev.cmModeFor(name);
+  if (webMode) return webMode;
   const ext = extOf(name);
   switch (ext) {
     case 'py': return 'python';
@@ -730,6 +739,20 @@ async function initProjectMode() {
     });
     pcm.on('cursorActivity', updateProjectNoteBtnState);
     applyEditorSettings(pcm);
+    // Outils dev web : Emmet, autocomplétion (Ctrl+Espace), auto-fermeture ` ' " ( [ {
+    WebDev.enhanceEditor(pcm);
+    WebDev.mountSymbolBar(el('projectSymbolBar'), () => pcm);
+    projectTerms = new WebDev.TerminalTabs(el('projectTermHost'), el('projectTermTabs'), {
+      getCwd: () => (projectRoot ? projectRoot.path : ''),
+      onLocalLink: (uri) => { window.studyide.openUrl(uri); }
+    });
+  }
+  // Un dossier choisi depuis la section Web devient le projet courant ici aussi
+  const sharedRoot = WebDev.getRoot();
+  if (sharedRoot && (!projectRoot || sharedRoot.path !== projectRoot.path)) {
+    projectStarted = true;
+    await openProjectFolder(sharedRoot);
+    return;
   }
   if (projectStarted) return;
   projectStarted = true;
@@ -747,6 +770,8 @@ async function openProjectFolder(root) {
   el('projectTitle').title = root.path;
   el('projectToolbar').classList.remove('hidden');
   el('projectEditorToolbar').classList.remove('hidden');
+  el('projectSymbolBar').classList.remove('hidden');
+  WebDev.setRoot(root);
   renderProjectTabs();
   pcm.setValue('// Sélectionne un fichier à gauche pour l\'ouvrir');
   pcm.setOption('readOnly', true);
@@ -864,7 +889,7 @@ function activateTab(filePath) {
   pcm.focus();
   tab.loading = false;
 
-  el('runActiveFileBtn').disabled = !['py', 'java', 'js', 'mjs', 'sh'].includes(tab.ext);
+  el('runActiveFileBtn').disabled = !['py', 'java', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'sh', 'html', 'htm'].includes(tab.ext);
   renderProjectTabs();
   highlightActiveInTree(filePath);
 }
@@ -928,44 +953,35 @@ async function saveActiveTab() {
   else alert('Erreur à l\'enregistrement : ' + res.error);
 }
 
-// ---- Terminal intégré ----
-
-function termWrite(text) {
-  const out = el('terminalOutput');
-  out.textContent += text;
-  out.parentElement.scrollTop = out.parentElement.scrollHeight;
-}
+// ---- Terminal intégré (xterm.js + node-pty, voir webdev.js) ----
 
 async function startProjectTerminal() {
-  if (terminalId) { try { await window.studyide.killTerminal(terminalId); } catch (e) {} }
-  el('terminalOutput').textContent = '';
-  el('terminalCwd').textContent = '— ' + (projectRoot ? projectRoot.path : '');
-  const res = await window.studyide.startTerminal(projectRoot ? projectRoot.path : '');
-  if (res.ok) {
-    terminalId = res.id;
-    termWrite(`Terminal démarré dans ${projectRoot.path}\n`);
-  } else {
-    termWrite('⚠️ Impossible de démarrer le terminal : ' + (res.error || '') + '\n');
-  }
+  el('terminalCwd').textContent = projectRoot ? projectRoot.path : '';
+  if (projectTerms) await projectTerms.reset(projectRoot ? projectRoot.path : '');
 }
 
 function runCommandInTerminal(cmd) {
-  if (!terminalId) return;
+  if (!projectTerms) return;
   el('projectTerminalPanel').classList.remove('collapsed');
-  termWrite(`$ ${cmd}\n`);
-  window.studyide.writeTerminal(terminalId, cmd + '\n');
+  projectTerms.runCommand(cmd, projectRoot ? projectRoot.path : '');
 }
 
 function runActiveFileInTerminal() {
   const tab = openTabs.find((t) => t.path === activeTabPath);
-  if (!tab || !terminalId) return;
+  if (!tab || !projectTerms) return;
   const rel = tab.path; // chemins absolus : plus fiable, quel que soit le cwd courant
   const isWin = navigator.platform.toLowerCase().includes('win');
   let cmd;
   if (tab.ext === 'py') {
     cmd = `${isWin ? 'python' : 'python3'} "${rel}"`;
-  } else if (tab.ext === 'js' || tab.ext === 'mjs') {
+  } else if (tab.ext === 'html' || tab.ext === 'htm') {
+    saveActiveTab();
+    WebDev.previewFile(tab.path);
+    return;
+  } else if (tab.ext === 'js' || tab.ext === 'mjs' || tab.ext === 'cjs') {
     cmd = `node "${rel}"`;
+  } else if (tab.ext === 'ts' || tab.ext === 'tsx') {
+    cmd = `npx --yes tsx "${rel}"`;
   } else if (tab.ext === 'sh') {
     cmd = isWin ? `bash "${rel}"` : `bash "${rel}"`;
   } else if (tab.ext === 'java') {
@@ -973,7 +989,7 @@ function runActiveFileInTerminal() {
     const className = tab.name.replace(/\.java$/, '');
     cmd = `javac "${rel}" && java -cp "${dir}" ${className}`;
   } else {
-    termWrite(`Exécution directe non supportée pour ce type de fichier. Utilise le terminal ci-dessous.\n`);
+    projectTerms.writeLocal('\x1b[33mExécution directe non supportée pour ce type de fichier. Utilise le terminal.\x1b[0m\n');
     return;
   }
   saveActiveTab();
@@ -981,13 +997,6 @@ function runActiveFileInTerminal() {
 }
 
 function bindProjectEvents() {
-  window.studyide.onTerminalData(({ id, chunk }) => {
-    if (id === terminalId) termWrite(chunk);
-  });
-  window.studyide.onTerminalExit(({ id, code }) => {
-    if (id === terminalId) { termWrite(`\n[processus terminé, code ${code}]\n`); terminalId = null; }
-  });
-
   el('openProjectBtn').onclick = async () => {
     const root = await window.studyide.openProjectDialog();
     if (root) await openProjectFolder(root);
@@ -1016,21 +1025,16 @@ function bindProjectEvents() {
 
   el('runActiveFileBtn').onclick = runActiveFileInTerminal;
 
-  el('restartTerminalBtn').onclick = () => startProjectTerminal();
+  el('restartTerminalBtn').onclick = () => { if (projectTerms) projectTerms.restartActive(); };
+  el('newTerminalBtn').onclick = () => {
+    el('projectTerminalPanel').classList.remove('collapsed');
+    if (projectTerms) projectTerms.newTab(projectRoot ? projectRoot.path : '');
+  };
+  el('symbolToggleBtn').onclick = () => el('projectSymbolBar').classList.toggle('hidden');
 
   el('toggleTerminalBtn').onclick = () => {
     el('projectTerminalPanel').classList.toggle('collapsed');
   };
-
-  el('terminalInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const val = e.target.value;
-      e.target.value = '';
-      if (!terminalId) return;
-      termWrite(`$ ${val}\n`);
-      window.studyide.writeTerminal(terminalId, val + '\n');
-    }
-  });
 }
 
 // =====================================================================

@@ -52,3 +52,13 @@ format :
 - Taille max par fichier : 50 Mo (modifiable dans `chat-server.js`, constante
   `MAX_FILE_SIZE`).
 - Le port par défaut est `4321`, changeable avec `PORT=1234 npm start`.
+
+## 🌐 Développement web (section « Web »)
+
+- **Terminal** : vrai pseudo-terminal (xterm.js + node-pty) avec onglets, couleurs, `Ctrl+C`, liens cliquables. Repli automatique sur l'ancien mode simplifié si `node-pty` n'est pas compilé.
+- **Section Web** : détection du framework (React, Next.js, Vue, Nuxt, Angular, Svelte/SvelteKit, Astro, Express, Vite, Django, Flask, PHP, HTML statique), scripts `package.json` cliquables, gestion des dépendances (npm / yarn / pnpm / bun) et création de projets à partir de modèles.
+- **Serveurs** : lancement / arrêt / redémarrage, URL détectée automatiquement, logs en couleur, serveur statique avec **live reload**.
+- **Aperçu** : `<webview>` intégré avec modes bureau / tablette / mobile, outils de développement et console de la page.
+- **Éditeur** : JSX, TSX, TypeScript, Vue, SCSS/Sass/Less, Pug, Handlebars, TOML, Dockerfile…, **Emmet** (`Tab`), autocomplétion (`Ctrl+Espace`), fermeture automatique de `` ` `` `'` `"` `( [ {`, et une barre de symboles (`{ } [ ] < > => \` | ~ @ #`…).
+
+Après avoir récupéré cette version : `npm install` (le script `postinstall` recompile `node-pty` pour Electron ; il faut les outils de compilation : Python + Visual Studio Build Tools sous Windows, `build-essential` sous Linux).

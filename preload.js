@@ -70,10 +70,13 @@ contextBridge.exposeInMainWorld('studyide', {
   renameProjectEntry: (payload) => ipcRenderer.invoke('project:rename', payload),
   deleteProjectEntry: (targetPath) => ipcRenderer.invoke('project:delete', targetPath),
 
-  // ---- Terminal intégré ----
-  startTerminal: (cwd) => ipcRenderer.invoke('terminal:start', { cwd }),
+  // ---- Terminal intégré (node-pty) ----
+  startTerminal: (opts) => ipcRenderer.invoke('terminal:start', typeof opts === 'string' ? { cwd: opts } : (opts || {})),
   writeTerminal: (id, data) => ipcRenderer.invoke('terminal:write', { id, data }),
+  sendTerminalInput: (id, data) => ipcRenderer.send('terminal:input', { id, data }),
+  resizeTerminal: (id, cols, rows) => ipcRenderer.send('terminal:resize', { id, cols, rows }),
   killTerminal: (id) => ipcRenderer.invoke('terminal:kill', { id }),
+  terminalInfo: () => ipcRenderer.invoke('terminal:info'),
   onTerminalData: (callback) => {
     const listener = (evt, data) => callback(data);
     ipcRenderer.on('terminal:data', listener);
@@ -83,5 +86,23 @@ contextBridge.exposeInMainWorld('studyide', {
     const listener = (evt, data) => callback(data);
     ipcRenderer.on('terminal:exit', listener);
     return () => ipcRenderer.removeListener('terminal:exit', listener);
-  }
+  },
+
+  // ---- Développement Web ----
+  webDetect: (dir) => ipcRenderer.invoke('web:detect', dir),
+  webStartServer: (opts) => ipcRenderer.invoke('web:startServer', opts),
+  webStartStatic: (opts) => ipcRenderer.invoke('web:startStatic', opts),
+  webStopServer: (id) => ipcRenderer.invoke('web:stopServer', { id }),
+  webRestartServer: (id) => ipcRenderer.invoke('web:restartServer', { id }),
+  webRemoveServer: (id) => ipcRenderer.invoke('web:removeServer', { id }),
+  webListServers: () => ipcRenderer.invoke('web:listServers'),
+  webGetServerLogs: (id) => ipcRenderer.invoke('web:getServerLogs', { id }),
+  webNpm: (payload) => ipcRenderer.invoke('web:npm', payload),
+  webTemplates: () => ipcRenderer.invoke('web:templates'),
+  webScaffold: (payload) => ipcRenderer.invoke('web:scaffold', payload),
+  webPickFolder: () => ipcRenderer.invoke('web:pickFolder'),
+  onWebServerUpdate: (cb) => { const l = (e, d) => cb(d); ipcRenderer.on('web:server-update', l); return () => ipcRenderer.removeListener('web:server-update', l); },
+  onWebServerLog: (cb) => { const l = (e, d) => cb(d); ipcRenderer.on('web:server-log', l); return () => ipcRenderer.removeListener('web:server-log', l); },
+  onWebServerRemoved: (cb) => { const l = (e, d) => cb(d); ipcRenderer.on('web:server-removed', l); return () => ipcRenderer.removeListener('web:server-removed', l); },
+  onWebTaskLog: (cb) => { const l = (e, d) => cb(d); ipcRenderer.on('web:task-log', l); return () => ipcRenderer.removeListener('web:task-log', l); }
 });
