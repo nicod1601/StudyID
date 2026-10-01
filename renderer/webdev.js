@@ -71,6 +71,18 @@
     });
   }
 
+  // Rendu WebGL : bien plus fluide pour les grosses sorties (npm install, logs).
+  // Réservé aux terminaux interactifs (le navigateur limite le nombre de contextes WebGL).
+  function enableWebgl(term) {
+    const W = window.WebglAddon && window.WebglAddon.WebglAddon;
+    if (!W) return;
+    try {
+      const gl = new W();
+      gl.onContextLoss(() => gl.dispose()); // retombe automatiquement sur le rendu DOM
+      term.loadAddon(gl);
+    } catch (e) { /* WebGL indisponible : rendu DOM classique */ }
+  }
+
   class TerminalTabs {
     constructor(hostEl, tabsEl, opts = {}) {
       this.host = hostEl;
@@ -85,6 +97,7 @@
     }
 
     async newTab(cwd, title) {
+      try { await window.Lazy.xterm(); } catch (e) { /* message ci-dessous */ }
       if (!xtermAvailable()) { this.host.textContent = 'xterm.js introuvable.'; return null; }
       const key = ++this.seq;
       const el = document.createElement('div');
@@ -101,6 +114,7 @@
       const Links = linksCtor();
       if (Links) term.loadAddon(new Links((e, uri) => openLink(uri, this.onLocalLink)));
       term.open(el);
+      enableWebgl(term);
 
       const tab = {
         key, el, term, fit, id: null, mode: 'pty', alive: false, line: '',
@@ -792,6 +806,7 @@
   }
 
   async function onShow() {
+    try { await window.Lazy.xterm(); } catch (e) { console.warn(e.message); }
     init();
     if (!root) {
       const last = await api.reopenLastProject();

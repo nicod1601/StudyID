@@ -12,8 +12,6 @@ let pdfScale = 1.1;
 let currentPdfExercises = [];
 let activePdfExId = null;
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
-
 const el = (id) => document.getElementById(id);
 
 // =====================================================================
@@ -133,7 +131,13 @@ function bindFullscreenEvents() {
 }
 
 async function init() {
-  db = await window.studyide.getDB();
+  // Les 3 lectures sont indépendantes : on les lance ensemble
+  const [dbData, appSettings] = await Promise.all([
+    window.studyide.getDB(),
+    window.studyide.getSettings(),
+    loadEditorSettings()
+  ]);
+  db = dbData;
   renderCourseList();
 
   cm = CodeMirror(el('editorHost'), {
@@ -148,22 +152,16 @@ async function init() {
     readOnly: true
   });
   cm.on('change', () => {
-    if (currentExercise) { dirty = true; updateSaveState(); }
+    if (currentExercise && !dirty) { dirty = true; updateSaveState(); }
   });
   cm.on('cursorActivity', updateNoteBtnState);
-
-  await loadEditorSettings();
   applyEditorSettings(cm);
 
-  const bubbleSettings = await window.studyide.getSettings();
-  el('iaBubbleBtn').classList.toggle('hidden', bubbleSettings.showIaBubble === false);
-  el('notesBubbleBtn').classList.toggle('hidden', bubbleSettings.showNotesBubble === false);
-  el('chatBubbleBtn').classList.toggle('hidden', bubbleSettings.showChatBubble === false);
+  el('iaBubbleBtn').classList.toggle('hidden', appSettings.showIaBubble === false);
+  el('notesBubbleBtn').classList.toggle('hidden', appSettings.showNotesBubble === false);
+  el('chatBubbleBtn').classList.toggle('hidden', appSettings.showChatBubble === false);
 
-  const env = await window.studyide.checkEnv();
-  el('dotPython').classList.toggle('ok', env.python);
-  el('dotJava').classList.toggle('ok', env.java && env.javac);
-
+  // L'interface devient cliquable tout de suite
   bindEvents();
   bindCoursEvents();
   bindProjectEvents();
@@ -178,6 +176,12 @@ async function init() {
   bindEdtRemindersEvents();
   bindEditorSettingsEvents();
   bindFullscreenEvents();
+
+  // Détection Python/Java : lance 3 processus, donc jamais en travers du démarrage
+  window.studyide.checkEnv().then((env) => {
+    el('dotPython').classList.toggle('ok', env.python);
+    el('dotJava').classList.toggle('ok', env.java && env.javac);
+  });
 
   await loadEdtReminderSettings();
   startEdtReminderLoop();
@@ -423,59 +427,156 @@ async function renderDocList() {
 }
 
 function clearPdfViewport() {
+  pdfSession++;
+  teardownPdfViewer();
+  if (pdfDoc) { pdfDoc.destroy().catch(() => {}); pdfDoc = null; }
   el('pdfViewport').innerHTML = '<div class="pdf-empty" id="pdfEmpty">Sélectionne un document PDF à gauche.</div>';
   el('docTabInfo').textContent = 'Aucun document ouvert';
   el('pdfExList').innerHTML = '';
   currentPdfExercises = [];
 }
 
+// --- Visionneuse PDF ---
+// Avant : toutes les pages étaient dessinées l'une après l'autre (un PDF de 100 pages
+// = plusieurs secondes de blocage + des centaines de Mo) et le zoom rechargeait tout.
+// Maintenant : des emplacements vides à la bonne taille, et seules les pages proches de
+// l'écran sont dessinées (les autres sont libérées). Le zoom réutilise le document chargé.
+let pdfSession = 0;        // change à chaque ouverture/fermeture de document
+let pdfLayoutId = 0;       // change à chaque (re)mise en page (zoom)
+let pdfObserver = null;
+const nextIdle = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 250 }) : setTimeout(r, 0)));
+
+function teardownPdfViewer() {
+  if (pdfObserver) { pdfObserver.disconnect(); pdfObserver = null; }
+}
+
 async function openDocument(doc) {
+  const session = ++pdfSession;
   currentDoc = doc;
   renderDocList();
   el('docTabInfo').textContent = doc.fileName;
   const viewport = el('pdfViewport');
   viewport.innerHTML = '<div class="pdf-empty">⏳ Chargement du PDF…</div>';
+  teardownPdfViewer();
+  if (pdfDoc) { pdfDoc.destroy().catch(() => {}); pdfDoc = null; }
 
-  const res = await window.studyide.readPdfBase64(doc.filePath);
-  if (!res.ok) {
-    viewport.innerHTML = `<div class="pdf-empty">Erreur : ${res.error}</div>`;
+  try {
+    const [res] = await Promise.all([window.studyide.readPdf(doc.filePath), window.Lazy.pdf()]);
+    if (session !== pdfSession) return;
+    if (!res.ok) { viewport.innerHTML = `<div class="pdf-empty">Erreur : ${escapeHtml(res.error)}</div>`; return; }
+    const loaded = await pdfjsLib.getDocument({ data: res.data }).promise;
+    if (session !== pdfSession) { loaded.destroy().catch(() => {}); return; }
+    pdfDoc = loaded;
+  } catch (e) {
+    if (session === pdfSession) viewport.innerHTML = `<div class="pdf-empty">Erreur : ${escapeHtml(e.message || String(e))}</div>`;
     return;
   }
-  const bytes = base64ToUint8Array(res.base64);
-  pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
 
-  viewport.innerHTML = '';
-  const pageTexts = [];
-  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-    const page = await pdfDoc.getPage(pageNum);
-    await renderPdfPage(page, pageNum, viewport);
-    pageTexts.push(await extractPageLines(page));
-  }
-
-  const detected = detectExercises(pageTexts);
-  await window.studyide.saveDetectedExercises({
-    documentId: doc.id,
-    courseCode: currentCourse,
-    exercises: detected
-  });
-  currentPdfExercises = await window.studyide.listPdfExercises(doc.id);
-  renderPdfExerciseList();
-  updateIaContextChip();
+  await layoutPdfPages(session, false);
+  loadPdfExercises(doc, pdfDoc, session); // en arrière-plan : n'empêche pas de lire le PDF
 }
 
-async function renderPdfPage(page, pageNum, viewport) {
-  const vp = page.getViewport({ scale: pdfScale });
-  const canvas = document.createElement('canvas');
-  canvas.width = vp.width;
-  canvas.height = vp.height;
-  canvas.dataset.pageNum = pageNum;
-  const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
-  viewport.appendChild(canvas);
-  const tag = document.createElement('div');
-  tag.className = 'page-number-tag';
-  tag.textContent = `Page ${pageNum}`;
-  viewport.appendChild(tag);
+async function layoutPdfPages(session, keepScroll) {
+  const layout = ++pdfLayoutId;
+  const viewport = el('pdfViewport');
+  const ratio = keepScroll && viewport.scrollHeight > 0 ? viewport.scrollTop / viewport.scrollHeight : 0;
+  teardownPdfViewer();
+
+  const first = await pdfDoc.getPage(1);
+  if (session !== pdfSession || layout !== pdfLayoutId) return;
+  const vp0 = first.getViewport({ scale: pdfScale });
+
+  viewport.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  const wraps = [];
+  for (let n = 1; n <= pdfDoc.numPages; n++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'pdf-page';
+    wrap.dataset.pageNum = n;
+    wrap.style.width = Math.floor(vp0.width) + 'px';
+    wrap.style.height = Math.floor(vp0.height) + 'px';
+    const tag = document.createElement('div');
+    tag.className = 'page-number-tag';
+    tag.textContent = `Page ${n}`;
+    wrap.appendChild(tag);
+    frag.appendChild(wrap);
+    wraps.push(wrap);
+  }
+  viewport.appendChild(frag);
+  if (ratio) viewport.scrollTop = ratio * viewport.scrollHeight;
+
+  pdfObserver = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      const wrap = en.target;
+      wrap.dataset.visible = en.isIntersecting ? '1' : '0';
+      if (en.isIntersecting) renderPdfPageInto(wrap, session, layout);
+      else releasePdfPage(wrap);
+    }
+  }, { root: viewport, rootMargin: '900px 0px' });
+  wraps.forEach((w) => pdfObserver.observe(w));
+}
+
+async function renderPdfPageInto(wrap, session, layout) {
+  if (wrap.dataset.state === 'done' || wrap.dataset.state === 'busy') return;
+  wrap.dataset.state = 'busy';
+  try {
+    const page = await pdfDoc.getPage(Number(wrap.dataset.pageNum));
+    if (session !== pdfSession || layout !== pdfLayoutId) return;
+    const vp = page.getViewport({ scale: pdfScale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(vp.width);
+    canvas.height = Math.floor(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    if (session !== pdfSession || layout !== pdfLayoutId || !wrap.isConnected || wrap.dataset.visible === '0') {
+      canvas.width = 0; // sorti de l'écran pendant le rendu : on jette
+      wrap.dataset.state = '';
+      return;
+    }
+    wrap.style.width = canvas.width + 'px';
+    wrap.style.height = canvas.height + 'px';
+    wrap.insertBefore(canvas, wrap.firstChild);
+    wrap.dataset.state = 'done';
+    page.cleanup();
+  } catch (e) {
+    wrap.dataset.state = '';
+    if (!/cancel|destroy/i.test(String(e && e.message))) console.error('Rendu PDF :', e);
+  }
+}
+
+function releasePdfPage(wrap) {
+  if (wrap.dataset.state !== 'done') return;
+  const canvas = wrap.querySelector('canvas');
+  if (canvas) { canvas.width = 0; canvas.height = 0; canvas.remove(); } // libère la mémoire du bitmap
+  wrap.dataset.state = '';
+}
+
+let relayoutTimer = null;
+function relayoutPdf() {
+  if (!currentDoc || !pdfDoc) return;
+  clearTimeout(relayoutTimer);
+  relayoutTimer = setTimeout(() => layoutPdfPages(pdfSession, true), 120); // plusieurs clics sur +/− = une seule mise en page
+}
+
+// Détection des exercices : faite une seule fois par document, puis servie depuis la base.
+async function loadPdfExercises(doc, pdf, session) {
+  let list = await window.studyide.listPdfExercises(doc.id);
+  if (session !== pdfSession) return;
+  if (!list.length && !doc.exercisesScanned) {
+    const pageTexts = [];
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const page = await pdf.getPage(n);
+      pageTexts.push(await extractPageLines(page));
+      if (session !== pdfSession) return;
+      await nextIdle(); // laisse respirer l'interface
+    }
+    await window.studyide.saveDetectedExercises({ documentId: doc.id, courseCode: currentCourse, exercises: detectExercises(pageTexts) });
+    doc.exercisesScanned = true;
+    list = await window.studyide.listPdfExercises(doc.id);
+    if (session !== pdfSession) return;
+  }
+  currentPdfExercises = list;
+  renderPdfExerciseList();
+  updateIaContextChip();
 }
 
 // Reconstruit des "lignes" de texte à partir des items positionnés de pdf.js
@@ -606,13 +707,6 @@ function simpleMarkdown(text) {
   return html;
 }
 
-function base64ToUint8Array(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
 function bindCoursEvents() {
   el('modeCodeBtn').onclick = () => switchMode('code');
   el('modeCoursBtn').onclick = () => switchMode('cours');
@@ -627,8 +721,8 @@ function bindCoursEvents() {
     if (doc) { renderDocList(); openDocument(doc); }
   };
 
-  el('zoomInBtn').onclick = () => { pdfScale = Math.min(pdfScale + 0.15, 2.5); el('zoomLabel').textContent = Math.round(pdfScale / 1.1 * 100) + '%'; if (currentDoc) openDocument(currentDoc); };
-  el('zoomOutBtn').onclick = () => { pdfScale = Math.max(pdfScale - 0.15, 0.5); el('zoomLabel').textContent = Math.round(pdfScale / 1.1 * 100) + '%'; if (currentDoc) openDocument(currentDoc); };
+  el('zoomInBtn').onclick = () => { pdfScale = Math.min(pdfScale + 0.15, 2.5); el('zoomLabel').textContent = Math.round(pdfScale / 1.1 * 100) + '%'; relayoutPdf(); };
+  el('zoomOutBtn').onclick = () => { pdfScale = Math.max(pdfScale - 0.15, 0.5); el('zoomLabel').textContent = Math.round(pdfScale / 1.1 * 100) + '%'; relayoutPdf(); };
 
   el('closePdfExModalBtn').onclick = () => {
     el('pdfExModalOverlay').classList.remove('open');
@@ -714,6 +808,8 @@ function cmModeFor(name) {
 
 async function initProjectMode() {
   if (!pcm) {
+    await window.Lazy.editor(); // modes rares, autocomplétion, Emmet (chargés une seule fois)
+    if (pcm) return; // un autre appel concurrent a déjà créé l'éditeur pendant l'attente
     pcm = CodeMirror(el('projectEditorHost'), {
       value: '',
       theme: 'dracula',
@@ -732,7 +828,7 @@ async function initProjectMode() {
     });
     pcm.on('change', () => {
       const tab = openTabs.find((t) => t.path === activeTabPath);
-      if (tab && !tab.loading) {
+      if (tab && !tab.loading && !tab.dirty) { // la barre d'onglets n'est redessinée qu'au premier changement
         tab.dirty = true;
         renderProjectTabs();
       }
@@ -1160,18 +1256,21 @@ async function buildSearchIndex() {
     docs.push(...courseDocs);
   }
   for (const doc of docs) {
-    if (!doc.pages) {
+    if (!doc.hasPages) {
       try {
-        const res = await window.studyide.readPdfBase64(doc.filePath);
+        await window.Lazy.pdf();
+        const res = await window.studyide.readPdf(doc.filePath);
         if (!res.ok) continue;
-        const bytes = base64ToUint8Array(res.base64);
-        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+        const pdf = await pdfjsLib.getDocument({ data: res.data }).promise;
         const pages = [];
         for (let p = 1; p <= pdf.numPages; p++) {
           const page = await pdf.getPage(p);
           const lines = await extractPageLines(page);
           pages.push(lines.join('\n'));
+          page.cleanup();
+          await nextIdle();
         }
+        pdf.destroy().catch(() => {}); // libère la mémoire du document
         await window.studyide.savePageText({ documentId: doc.id, pages });
       } catch (e) {
         console.error('Indexation impossible pour', doc.fileName, e);

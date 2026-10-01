@@ -62,3 +62,12 @@ format :
 - **Éditeur** : JSX, TSX, TypeScript, Vue, SCSS/Sass/Less, Pug, Handlebars, TOML, Dockerfile…, **Emmet** (`Tab`), autocomplétion (`Ctrl+Espace`), fermeture automatique de `` ` `` `'` `"` `( [ {`, et une barre de symboles (`{ } [ ] < > => \` | ~ @ #`…).
 
 Après avoir récupéré cette version : `npm install` (le script `postinstall` recompile `node-pty` pour Electron ; il faut les outils de compilation : Python + Visual Studio Build Tools sous Windows, `build-essential` sous Linux).
+
+## ⚡ Performances
+
+- **Base de données et réglages en cache mémoire** : lecture unique au démarrage, écriture groupée et atomique (fichier temporaire + renommage), vidée à la fermeture. Avant, chaque clic relisait et re-parsait tout le JSON.
+- **Démarrage** : la fenêtre s'affiche sur `ready-to-show` (pas de flash blanc), le workspace se prépare pendant que l'interface charge, la détection Python/Java ne bloque plus l'interface (3 vérifications en parallèle, mises en cache).
+- **Chargement paresseux** (`renderer/lazy.js`) : pdf.js, Emmet, xterm et les modes d'éditeur rares ne sont chargés qu'à la première utilisation.
+- **Visionneuse PDF** : seules les pages proches de l'écran sont dessinées (les autres sont libérées), le zoom ne recharge plus le fichier, la détection d'exercices n'est faite qu'une fois par document.
+- **Terminal** : sortie regroupée (un message IPC toutes les ~10 ms) et rendu WebGL avec repli automatique sur le rendu DOM.
+- **Arrière-plan** : fenêtre masquée dans la zone de notification = quasi 0 % CPU (le throttling n'est plus désactivé).

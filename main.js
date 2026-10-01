@@ -187,65 +187,101 @@ const COURSES_SEED = require('./data/courses.json');
 const SEED_SOLUTIONS = require('./data/seed-solutions.json');
 const SEED_PDFS_DIR = path.join(__dirname, 'data', 'seed-pdfs');
 
+// ---------- Base de données : cache mémoire + écriture différée et atomique ----------
+// Avant : chaque appel IPC relisait et re-parsait tout le JSON (et revérifiait
+// 30 dossiers). Maintenant : lecture unique au démarrage, écriture groupée
+// (debounce) via un fichier temporaire puis renommage, vidée à la fermeture.
+
+let workspaceReady = false;
+let dbCache = null;
+let dbTimer = null;
+let dbDirty = false;
+
+function atomicWriteSync(file, content) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, content, 'utf-8');
+  fs.renameSync(tmp, file);
+}
+
+function flushDB() {
+  clearTimeout(dbTimer);
+  dbTimer = null;
+  if (!dbDirty || !dbCache) return;
+  dbDirty = false;
+  try { atomicWriteSync(DB_FILE, JSON.stringify(dbCache)); }
+  catch (e) { dbDirty = true; console.error('Écriture de la base impossible :', e.message); }
+}
+
+function scheduleDBWrite() {
+  dbDirty = true;
+  if (dbTimer) return;
+  dbTimer = setTimeout(flushDB, 400);
+}
+
 function ensureWorkspace() {
+  if (workspaceReady) return;
   if (!fs.existsSync(WORKSPACE_DIR)) fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
   for (const c of COURSES_SEED) {
-    const dir = path.join(WORKSPACE_DIR, c.code);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const docDir = path.join(dir, 'documents');
-    if (!fs.existsSync(docDir)) fs.mkdirSync(docDir, { recursive: true });
+    const docDir = path.join(WORKSPACE_DIR, c.code, 'documents');
+    if (!fs.existsSync(docDir)) fs.mkdirSync(docDir, { recursive: true }); // crée aussi le dossier de la matière
   }
   if (!fs.existsSync(DB_FILE)) {
-    const initial = { courses: COURSES_SEED, exercises: {}, documents: {}, pdfExercises: {} };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+    atomicWriteSync(DB_FILE, JSON.stringify({ courses: COURSES_SEED, exercises: {}, documents: {}, pdfExercises: {} }));
   }
-  migrateSeedPdfs();
+  dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+  if (!dbCache.documents) dbCache.documents = {};
+  if (!dbCache.pdfExercises) dbCache.pdfExercises = {};
+  if (!dbCache.exercises) dbCache.exercises = {};
+  workspaceReady = true;
+  migrateSeedPdfs(dbCache);
 }
 
 function readDB() {
   ensureWorkspace();
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-  if (!db.documents) db.documents = {};
-  if (!db.pdfExercises) db.pdfExercises = {};
-  return db;
+  return dbCache;
 }
 
 function writeDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+  if (db && db !== dbCache) dbCache = db;
+  scheduleDBWrite();
+}
+
+// Le texte intégral des PDF (doc.pages) ne sert qu'à la recherche : inutile de le
+// copier dans le renderer à chaque lecture de la base.
+function publicDoc(d) {
+  if (!d) return d;
+  const { pages, ...rest } = d;
+  return { ...rest, hasPages: Array.isArray(pages) };
+}
+
+function publicDB(db) {
+  const documents = {};
+  for (const [id, d] of Object.entries(db.documents)) documents[id] = publicDoc(d);
+  return { ...db, documents };
 }
 
 // Copie les PDF de cours livrés avec l'appli dans le workspace, une seule fois,
 // et enregistre les documents (la détection des exercices se fait ensuite côté
 // renderer avec pdf.js, à l'ouverture, puis est mise en cache dans la DB).
-function migrateSeedPdfs() {
+function migrateSeedPdfs(db) {
   if (!fs.existsSync(SEED_PDFS_DIR)) return;
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-  if (!db.documents) db.documents = {};
-  if (!db.pdfExercises) db.pdfExercises = {};
+  const known = new Set(Object.values(db.documents).map((d) => `${d.courseCode}/${d.fileName}`));
   let changed = false;
-  const courseFolders = fs.readdirSync(SEED_PDFS_DIR);
-  for (const courseCode of courseFolders) {
+  for (const courseCode of fs.readdirSync(SEED_PDFS_DIR)) {
     const srcDir = path.join(SEED_PDFS_DIR, courseCode);
     if (!fs.statSync(srcDir).isDirectory()) continue;
     const destDir = path.join(WORKSPACE_DIR, courseCode, 'documents');
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     for (const fileName of fs.readdirSync(srcDir)) {
+      if (known.has(`${courseCode}/${fileName}`)) continue;
       const destPath = path.join(destDir, fileName);
-      const alreadyRegistered = Object.values(db.documents).some(
-        (d) => d.courseCode === courseCode && d.fileName === fileName
-      );
-      if (!alreadyRegistered) {
-        if (!fs.existsSync(destPath)) fs.copyFileSync(path.join(srcDir, fileName), destPath);
-        const id = `doc-${courseCode}-${fileName}`.replace(/[^a-zA-Z0-9_\-.]/g, '_');
-        db.documents[id] = {
-          id, courseCode, fileName, filePath: destPath,
-          importedAt: new Date().toISOString(), seeded: true
-        };
-        changed = true;
-      }
+      if (!fs.existsSync(destPath)) fs.copyFileSync(path.join(srcDir, fileName), destPath);
+      const id = `doc-${courseCode}-${fileName}`.replace(/[^a-zA-Z0-9_\-.]/g, '_');
+      db.documents[id] = { id, courseCode, fileName, filePath: destPath, importedAt: new Date().toISOString(), seeded: true };
+      changed = true;
     }
   }
-  if (changed) fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+  if (changed) scheduleDBWrite();
 }
 
 let mainWindow;
@@ -265,16 +301,20 @@ function createWindow() {
     height: 820,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#1e1f24',
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    backgroundColor: '#08090d',
+    show: false, // affichée sur 'ready-to-show' : pas de flash blanc, démarrage perçu plus net
+    icon: iconPath && fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
-      backgroundThrottling: false
+      spellcheck: false
+      // backgroundThrottling laissé actif : fenêtre masquée dans la zone de notification
+      // = quasi 0 % CPU (les rappels EDT tolèrent un tick par minute).
     }
   });
+  mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
@@ -311,9 +351,11 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
-  ensureWorkspace();
+  // La fenêtre se charge dans son propre processus pendant que le processus
+  // principal prépare le workspace : les deux étapes se chevauchent.
   createWindow();
-  createTray();
+  ensureWorkspace();
+  setImmediate(createTray);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else { mainWindow.show(); mainWindow.focus(); }
@@ -329,7 +371,7 @@ app.on('window-all-closed', () => {
 
 // ---------- IPC : données (matières / exercices) ----------
 
-ipcMain.handle('db:get', () => readDB());
+ipcMain.handle('db:get', () => publicDB(readDB()));
 
 ipcMain.handle('db:createExercise', (evt, { courseCode, name, language }) => {
   const db = readDB();
@@ -551,21 +593,20 @@ ipcMain.handle('edt:getCache', () => readEdtCache());
 
 const IGNORED_DIR_NAMES = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'target', 'dist', 'build', '.idea', '.vscode']);
 
-function statEntry(fullPath, name) {
-  const st = fs.statSync(fullPath);
-  return { name, path: fullPath, isDirectory: st.isDirectory(), size: st.isDirectory() ? 0 : st.size };
-}
-
-function listDirEntries(dirPath) {
-  const names = fs.readdirSync(dirPath);
-  const entries = names.map((name) => {
-    try { return statEntry(path.join(dirPath, name), name); } catch (e) { return null; }
-  }).filter(Boolean);
-  entries.sort((a, b) => {
+async function listDirEntries(dirPath) {
+  const dirents = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  const entries = await Promise.all(dirents.map(async (d) => {
+    const full = path.join(dirPath, d.name);
+    let isDirectory = d.isDirectory();
+    if (d.isSymbolicLink()) {
+      try { isDirectory = (await fs.promises.stat(full)).isDirectory(); } catch (e) { return null; }
+    }
+    return { name: d.name, path: full, isDirectory, size: 0, ignored: isDirectory && IGNORED_DIR_NAMES.has(d.name) };
+  }));
+  return entries.filter(Boolean).sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
     return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
   });
-  return entries.map((e) => ({ ...e, ignored: e.isDirectory && IGNORED_DIR_NAMES.has(e.name) }));
 }
 
 ipcMain.handle('project:openDialog', async () => {
@@ -586,9 +627,9 @@ ipcMain.handle('project:reopenLast', () => {
   return null;
 });
 
-ipcMain.handle('project:readDir', (evt, dirPath) => {
+ipcMain.handle('project:readDir', async (evt, dirPath) => {
   try {
-    return { ok: true, entries: listDirEntries(dirPath) };
+    return { ok: true, entries: await listDirEntries(dirPath) };
   } catch (e) {
     return { ok: false, error: e.message, entries: [] };
   }
@@ -654,6 +695,8 @@ const webDev = require('./web-dev')({
 
 app.on('before-quit', () => {
   isQuitting = true;
+  flushDB();
+  flushSettings();
   webDev.killAll();
 });
 
@@ -661,18 +704,28 @@ app.on('before-quit', () => {
 
 function checkTool(cmd, args = ['--version']) {
   return new Promise((resolve) => {
-    const p = spawn(cmd, args);
-    let ok = false;
-    p.on('error', () => resolve(false));
-    p.on('exit', (code) => resolve(true));
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    let p;
+    try { p = spawn(cmd, args, { windowsHide: true, stdio: 'ignore' }); } catch (e) { return finish(false); }
+    const timer = setTimeout(() => { try { p.kill(); } catch (e) { /* ignoré */ } finish(false); }, 4000);
+    p.on('error', () => { clearTimeout(timer); finish(false); });
+    p.on('exit', () => { clearTimeout(timer); finish(true); });
   });
 }
 
-ipcMain.handle('run:checkEnv', async () => {
-  const python = await checkTool(process.platform === 'win32' ? 'python' : 'python3', ['--version']);
-  const java = await checkTool('java', ['-version']);
-  const javac = await checkTool('javac', ['-version']);
-  return { python, java, javac };
+let envCache = null; // { at, value }
+ipcMain.handle('run:checkEnv', async (evt, opts) => {
+  if (envCache && !(opts && opts.refresh) && Date.now() - envCache.at < 60000) return envCache.value;
+  // Les 3 vérifications se lancent en même temps (avant : l'une après l'autre, ~1 s au démarrage)
+  const [python, java, javac] = await Promise.all([
+    checkTool(process.platform === 'win32' ? 'python' : 'python3', ['--version']),
+    checkTool('java', ['-version']),
+    checkTool('javac', ['-version'])
+  ]);
+  const value = { python, java, javac };
+  envCache = { at: Date.now(), value };
+  return value;
 });
 
 ipcMain.handle('run:execute', async (evt, { filePath, language }) => {
@@ -719,34 +772,51 @@ ipcMain.handle('run:execute', async (evt, { filePath, language }) => {
 
 const SETTINGS_FILE = path.join(WORKSPACE_DIR, 'studyide-settings.json');
 
-function readSettings() {
+const SETTINGS_DEFAULTS = () => ({
+  localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true,
+  iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true,
+  edtReminderMinutesBefore: 15, editorTabSize: 4, editorIndentWithTabs: false, editorShowWhitespace: false
+});
+
+let settingsCache = null;
+let settingsTimer = null;
+
+function loadSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    const initial = { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15, editorTabSize: 4, editorIndentWithTabs: false, editorShowWhitespace: false };
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+    const initial = SETTINGS_DEFAULTS();
+    try { atomicWriteSync(SETTINGS_FILE, JSON.stringify(initial, null, 2)); } catch (e) { /* workspace pas encore créé */ }
     return initial;
   }
   try {
-    const s = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
-    if (!s.localModelUrl) s.localModelUrl = DEFAULT_MODEL_URL;
-    if (!s.localModelId) s.localModelId = 'fast';
-    if (!s.iaEngine) s.iaEngine = 'auto';
-    if (s.minimizeToTray === undefined) s.minimizeToTray = true;
-    if (s.iaNotifications === undefined) s.iaNotifications = true;
-    if (s.hplanningUrl === undefined) s.hplanningUrl = '';
-    if (!Array.isArray(s.edtReminders)) s.edtReminders = [];
-    if (s.edtRemindersEnabled === undefined) s.edtRemindersEnabled = true;
-    if (s.edtReminderMinutesBefore === undefined) s.edtReminderMinutesBefore = 15;
-    if (s.editorTabSize === undefined) s.editorTabSize = 4;
-    if (s.editorIndentWithTabs === undefined) s.editorIndentWithTabs = false;
-    if (s.editorShowWhitespace === undefined) s.editorShowWhitespace = false;
-    return s;
+    const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    const merged = { ...SETTINGS_DEFAULTS(), ...parsed };
+    if (!merged.localModelUrl) merged.localModelUrl = DEFAULT_MODEL_URL;
+    if (!merged.localModelId) merged.localModelId = 'fast';
+    if (!merged.iaEngine) merged.iaEngine = 'auto';
+    if (!Array.isArray(merged.edtReminders)) merged.edtReminders = [];
+    return merged;
   } catch (e) {
-    return { localModelUrl: DEFAULT_MODEL_URL, localModelId: 'fast', iaEngine: 'auto', minimizeToTray: true, iaNotifications: true, hplanningUrl: '', edtReminders: [], edtRemindersEnabled: true, edtReminderMinutesBefore: 15, editorTabSize: 4, editorIndentWithTabs: false, editorShowWhitespace: false };
+    return SETTINGS_DEFAULTS();
   }
 }
 
+function readSettings() {
+  if (!settingsCache) settingsCache = loadSettings();
+  return { ...settingsCache }; // copie : les appelants modifient puis rappellent writeSettings
+}
+
+function flushSettings() {
+  clearTimeout(settingsTimer);
+  settingsTimer = null;
+  if (!settingsCache) return;
+  try { atomicWriteSync(SETTINGS_FILE, JSON.stringify(settingsCache, null, 2)); }
+  catch (e) { console.error('Écriture des réglages impossible :', e.message); }
+}
+
 function writeSettings(s) {
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2), 'utf-8');
+  settingsCache = { ...s };
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(flushSettings, 200);
 }
 
 ipcMain.handle('settings:get', () => readSettings());
@@ -924,6 +994,8 @@ ipcMain.handle('backup:export', async () => {
   });
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
 
+  flushDB(); // l'export doit contenir les dernières modifications
+  flushSettings();
   const destRoot = res.filePaths[0];
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const destDir = path.join(destRoot, `StudyIDE-export-${stamp}`);
@@ -1007,7 +1079,7 @@ ipcMain.handle('docs:savePageText', (evt, { documentId, pages }) => {
     db.documents[documentId].pages = pages; // tableau de string, 1 par page
     writeDB(db);
   }
-  return db.documents[documentId];
+  return publicDoc(db.documents[documentId]);
 });
 
 ipcMain.handle('app:getWorkspaceDir', () => WORKSPACE_DIR);
@@ -1056,13 +1128,13 @@ ipcMain.handle('docs:getSearchCorpus', () => {
 
 ipcMain.handle('docs:listByCourse', (evt, courseCode) => {
   const db = readDB();
-  return Object.values(db.documents).filter((d) => d.courseCode === courseCode);
+  return Object.values(db.documents).filter((d) => d.courseCode === courseCode).map(publicDoc);
 });
 
-ipcMain.handle('docs:readAsBase64', (evt, filePath) => {
+ipcMain.handle('docs:readPdf', async (evt, filePath) => {
   try {
-    const buf = fs.readFileSync(filePath);
-    return { ok: true, base64: buf.toString('base64') };
+    const buf = await fs.promises.readFile(filePath);
+    return { ok: true, data: buf }; // Buffer -> Uint8Array côté renderer
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -1101,7 +1173,7 @@ ipcMain.handle('docs:deleteDocument', (evt, { id, deleteFile }) => {
     }
     writeDB(db);
   }
-  return db;
+  return publicDB(db);
 });
 
 // ---------- IPC : exercices détectés dans les PDF ----------
@@ -1111,8 +1183,9 @@ ipcMain.handle('pdfEx:saveDetected', (evt, { documentId, courseCode, exercises }
   const db = readDB();
   // On ne recrée pas si déjà présent pour ce document (on garde d'éventuelles
   // notes déjà écrites par l'utilisateur), sauf si forcé.
+  if (db.documents[documentId]) db.documents[documentId].exercisesScanned = true;
   const already = Object.values(db.pdfExercises).some((e) => e.documentId === documentId);
-  if (already) return db;
+  if (already) { writeDB(db); return { ok: true }; }
 
   const fileName = db.documents[documentId]?.fileName || '';
   for (const ex of exercises) {
@@ -1130,7 +1203,7 @@ ipcMain.handle('pdfEx:saveDetected', (evt, { documentId, courseCode, exercises }
     };
   }
   writeDB(db);
-  return db;
+  return { ok: true };
 });
 
 ipcMain.handle('pdfEx:listByDocument', (evt, documentId) => {

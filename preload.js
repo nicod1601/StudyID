@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('studyide', {
   focusWindow: () => ipcRenderer.invoke('app:focusWindow'),
 
   listDocuments: (courseCode) => ipcRenderer.invoke('docs:listByCourse', courseCode),
-  readPdfBase64: (filePath) => ipcRenderer.invoke('docs:readAsBase64', filePath),
+  readPdf: (filePath) => ipcRenderer.invoke('docs:readPdf', filePath),
   importPdfDialog: (courseCode) => ipcRenderer.invoke('docs:importDialog', courseCode),
   deleteDocument: (payload) => ipcRenderer.invoke('docs:deleteDocument', payload),
 

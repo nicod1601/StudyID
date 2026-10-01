@@ -20,7 +20,14 @@ const IS_WIN = process.platform === 'win32';
 // Electron, on retombe automatiquement sur l'ancien mode (pipes).
 let pty = null;
 let ptyError = null;
-try { pty = require('node-pty'); } catch (e) { ptyError = e.message; }
+let ptyTried = false;
+function getPty() {
+  if (!ptyTried) {
+    ptyTried = true;
+    try { pty = require('node-pty'); } catch (e) { ptyError = e.message; }
+  }
+  return pty;
+}
 
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
@@ -31,6 +38,29 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
+
+  // Regroupe les rafales de sortie (npm install, logs Vite…) : un message IPC
+  // toutes les ~10 ms au lieu de plusieurs centaines par seconde.
+  function makeBatcher(channel, extra, delay = 10) {
+    let buf = '';
+    let timer = null;
+    const flush = () => {
+      clearTimeout(timer);
+      timer = null;
+      if (!buf) return;
+      const chunk = buf;
+      buf = '';
+      send(channel, { ...extra, chunk });
+    };
+    return {
+      push(chunk) {
+        buf += chunk;
+        if (buf.length > 65536) flush();
+        else if (!timer) timer = setTimeout(flush, delay);
+      },
+      flush
+    };
+  }
 
   // ===================================================================
   // TERMINAUX
@@ -52,7 +82,7 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
     const { cmd, args } = defaultShell();
     const dir = safeCwd(cwd);
 
-    if (pty) {
+    if (getPty()) {
       try {
         const proc = pty.spawn(cmd, args, {
           name: 'xterm-256color',
@@ -62,8 +92,10 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
           env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
         });
         terminals.set(id, { kind: 'pty', proc });
-        proc.onData((chunk) => send('terminal:data', { id, chunk }));
+        const batch = makeBatcher('terminal:data', { id }, 8);
+        proc.onData((chunk) => batch.push(chunk));
         proc.onExit(({ exitCode }) => {
+          batch.flush(); // la sortie finale doit arriver avant l'événement de fin
           terminals.delete(id);
           send('terminal:exit', { id, code: exitCode });
         });
@@ -75,9 +107,11 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
 
     const proc = spawn(cmd, args, { cwd: dir, env: process.env, windowsHide: true });
     terminals.set(id, { kind: 'pipe', proc });
-    proc.stdout.on('data', (d) => send('terminal:data', { id, chunk: d.toString() }));
-    proc.stderr.on('data', (d) => send('terminal:data', { id, chunk: d.toString() }));
+    const pipeBatch = makeBatcher('terminal:data', { id }, 8);
+    proc.stdout.on('data', (d) => pipeBatch.push(d.toString()));
+    proc.stderr.on('data', (d) => pipeBatch.push(d.toString()));
     proc.on('exit', (code) => {
+      pipeBatch.flush();
       terminals.delete(id);
       send('terminal:exit', { id, code });
     });
@@ -114,7 +148,7 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
     }
     return { ok: true };
   });
-  ipcMain.handle('terminal:info', () => ({ pty: !!pty, error: ptyError }));
+  ipcMain.handle('terminal:info', () => ({ pty: !!getPty(), error: ptyError }));
 
   // ===================================================================
   // DÉTECTION DE PROJET (framework, scripts, dépendances)
@@ -252,8 +286,9 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
 
   function appendLog(e, chunk) {
     e.logs += chunk;
-    if (e.logs.length > MAX_LOG_CHARS) e.logs = e.logs.slice(e.logs.length - MAX_LOG_CHARS);
-    send('web:server-log', { id: e.id, chunk });
+    if (e.logs.length > MAX_LOG_CHARS * 1.25) e.logs = e.logs.slice(e.logs.length - MAX_LOG_CHARS);
+    if (!e.batch) e.batch = makeBatcher('web:server-log', { id: e.id }, 16);
+    e.batch.push(chunk);
   }
 
   function probePort(port, timeoutMs = 60000) {
@@ -352,6 +387,7 @@ module.exports = function registerWebDev({ ipcMain, dialog, getMainWindow, works
       entry.exitCode = code;
       if (entry.status !== 'stopped') entry.status = (code === 0 || signal) ? 'stopped' : 'error';
       appendLog(entry, `\r\n\x1b[90m[processus terminé, code ${code === null ? signal : code}]\x1b[0m\r\n`);
+      entry.batch.flush();
       emitUpdate(entry);
     });
     emitUpdate(entry);

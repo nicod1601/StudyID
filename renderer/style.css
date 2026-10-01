@@ -588,11 +588,23 @@ body.editor-fullscreen .project-panel { display: none; }
   border-radius: 6px;
   border: 1px solid var(--line);
 }
+.pdf-page {
+  position: relative;
+  flex-shrink: 0;
+  margin-bottom: 14px;
+  contain: layout style;              /* une page qui se dessine ne relance pas la mise en page des autres */
+  background: #0d0f16;                /* emplacement visible tant que la page n'est pas dessinée */
+  border-radius: 6px;
+}
+.pdf-page canvas { display: block; }
 .page-number-tag {
+  position: absolute;
+  left: 0; right: 0; bottom: -16px;
+  text-align: center;
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text-low);
-  margin-top: -10px;
+  pointer-events: none;
 }
 
 .pdf-exercises {
@@ -2122,3 +2134,12 @@ li.CodeMirror-hint-active { background: var(--accent-dim); color: var(--accent-h
 
 body.editor-fullscreen .web-panel { display: none; }
 body.editor-fullscreen #webContent.content-wrapper { grid-template-columns: 1fr; }
+
+
+/* ---------- Fluidité ---------- */
+/* Les zones à défilement sont isolées : un changement à l'intérieur ne recalcule pas toute la page */
+.sidebar-scroll, .web-scroll, .file-tree, .pdf-viewport, .exercise-list, .web-console { contain: layout style; overscroll-behavior: contain; }
+/* Les animations décoratives s'arrêtent pour ceux qui le demandent (et économisent le GPU) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
