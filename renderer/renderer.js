@@ -757,6 +757,7 @@ let projectStarted = false;   // évite de réinitialiser à chaque switchMode
 let openTabs = [];            // [{ path, name, ext, dirty, value, mode, scrollInfo, cursor }]
 let activeTabPath = null;
 let expandedDirs = new Set(); // chemins de dossiers actuellement dépliés
+let projectNav = null;        // fil d'Ariane / barre d'état / symboles (editor-nav.js)
 let projectTerms = null;      // terminaux xterm.js du mode Projet (WebDev.TerminalTabs)
 
 const EXT_ICONS = {
@@ -824,12 +825,18 @@ async function initProjectMode() {
       gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
       mode: 'text/plain',
       readOnly: true,
+      scrollbarStyle: 'simple',   // vraies barres de défilement (verticale + horizontale), toujours visibles et déplaçables
+      scrollPastEnd: true,        // on peut faire défiler jusqu'à mettre la dernière ligne en haut
+      cursorScrollMargin: 36,     // le curseur ne reste jamais collé au bord
+      highlightSelectionMatches: { showToken: /[\w$#.-]/, annotateScrollbar: true, minChars: 2, delay: 150 },
       extraKeys: { 'Ctrl-S': saveActiveTab, 'Cmd-S': saveActiveTab }
     });
     pcm.on('change', () => {
       const tab = openTabs.find((t) => t.path === activeTabPath);
-      if (tab && !tab.loading && !tab.dirty) { // la barre d'onglets n'est redessinée qu'au premier changement
-        tab.dirty = true;
+      if (!tab || tab.loading || !tab.doc) return;
+      const dirty = !tab.doc.isClean(tab.cleanGen); // faux si on annule jusqu'à l'état enregistré
+      if (dirty !== tab.dirty) { // la barre d'onglets n'est redessinée que si l'état change
+        tab.dirty = dirty;
         renderProjectTabs();
       }
     });
@@ -838,6 +845,13 @@ async function initProjectMode() {
     // Outils dev web : Emmet, autocomplétion (Ctrl+Espace), auto-fermeture ` ' " ( [ {
     WebDev.enhanceEditor(pcm);
     WebDev.mountSymbolBar(el('projectSymbolBar'), () => pcm);
+    projectNav = EditorNav.attach(pcm, {
+      body: el('projectEditorBody'), crumb: el('projectBreadcrumb'), status: el('projectStatusBar')
+    });
+    EditorNav.initSplitter(el('projectTerminalPanel'), el('projectTermSplitter'));
+    el('projectTabbar').addEventListener('wheel', (e) => { // molette = défilement horizontal des onglets
+      if (e.deltaY && !e.deltaX) { e.preventDefault(); e.currentTarget.scrollLeft += e.deltaY; }
+    }, { passive: false });
     projectTerms = new WebDev.TerminalTabs(el('projectTermHost'), el('projectTermTabs'), {
       getCwd: () => (projectRoot ? projectRoot.path : ''),
       onLocalLink: (uri) => { window.studyide.openUrl(uri); }
@@ -869,8 +883,7 @@ async function openProjectFolder(root) {
   el('projectSymbolBar').classList.remove('hidden');
   WebDev.setRoot(root);
   renderProjectTabs();
-  pcm.setValue('// Sélectionne un fichier à gauche pour l\'ouvrir');
-  pcm.setOption('readOnly', true);
+  showNoFile();
   el('runActiveFileBtn').disabled = true;
   await renderFileTree();
   startProjectTerminal();
@@ -958,33 +971,46 @@ async function openFileInTab(filePath, name) {
   if (!tab) {
     const res = await window.studyide.readFile(filePath);
     if (!res.ok) { alert('Impossible d\'ouvrir ce fichier : ' + res.error); return; }
-    tab = { path: filePath, name, ext: extOf(name), dirty: false, value: res.content, mode: cmModeFor(name) };
+    const mode = cmModeFor(name);
+    const doc = CodeMirror.Doc(res.content, mode); // un document par onglet : historique d'annulation, curseur et blocs repliés conservés
+    tab = { path: filePath, name, ext: extOf(name), dirty: false, doc, cleanGen: doc.changeGeneration(), mode };
     openTabs.push(tab);
   }
   activateTab(filePath);
 }
 
+function placeholderDoc() {
+  return CodeMirror.Doc('// Sélectionne un fichier à gauche pour l\'ouvrir', 'text/plain');
+}
+
+function showNoFile() {
+  pcm.swapDoc(placeholderDoc());
+  pcm.setOption('readOnly', true);
+  if (projectNav) projectNav.setActive(false);
+}
+
+function projectRelPath(absPath) {
+  const root = projectRoot ? projectRoot.path : '';
+  if (root && absPath.startsWith(root)) return absPath.slice(root.length).replace(/^[\\/]+/, '');
+  return absPath;
+}
+
 function activateTab(filePath) {
-  // Sauvegarde l'état du tab courant avant de basculer
+  // Mémorise la position de défilement du fichier qu'on quitte (curseur et historique sont dans son document)
   const prev = openTabs.find((t) => t.path === activeTabPath);
-  if (prev) {
-    prev.value = pcm.getValue();
-    prev.scrollInfo = pcm.getScrollInfo();
-    prev.cursor = pcm.getCursor();
-  }
+  if (prev) prev.scrollInfo = pcm.getScrollInfo();
   activeTabPath = filePath;
   const tab = openTabs.find((t) => t.path === filePath);
   if (!tab) return;
 
   tab.loading = true;
   pcm.setOption('readOnly', false);
-  pcm.setOption('mode', tab.mode);
-  pcm.setValue(tab.value);
-  if (tab.cursor) pcm.setCursor(tab.cursor);
+  if (pcm.getDoc() !== tab.doc) pcm.swapDoc(tab.doc);
   if (tab.scrollInfo) pcm.scrollTo(tab.scrollInfo.left, tab.scrollInfo.top);
   pcm.focus();
   tab.loading = false;
 
+  if (projectNav) { projectNav.setFile(projectRelPath(tab.path), tab.ext); projectNav.setActive(true); }
   el('runActiveFileBtn').disabled = !['py', 'java', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'sh', 'html', 'htm'].includes(tab.ext);
   renderProjectTabs();
   highlightActiveInTree(filePath);
@@ -1017,6 +1043,8 @@ function renderProjectTabs() {
     };
     bar.appendChild(t);
   }
+  const activeEl = bar.querySelector('.project-tab.active');
+  if (activeEl) activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function closeTab(filePath, skipConfirm) {
@@ -1030,8 +1058,7 @@ function closeTab(filePath, skipConfirm) {
     if (openTabs.length) {
       activateTab(openTabs[openTabs.length - 1].path);
     } else {
-      pcm.setValue('// Sélectionne un fichier à gauche pour l\'ouvrir');
-      pcm.setOption('readOnly', true);
+      showNoFile();
       el('runActiveFileBtn').disabled = true;
       renderProjectTabs();
     }
@@ -1043,9 +1070,9 @@ function closeTab(filePath, skipConfirm) {
 async function saveActiveTab() {
   const tab = openTabs.find((t) => t.path === activeTabPath);
   if (!tab) return;
-  tab.value = pcm.getValue();
-  const res = await window.studyide.writeFile({ filePath: tab.path, content: tab.value });
-  if (res.ok) { tab.dirty = false; renderProjectTabs(); }
+  const gen = tab.doc.changeGeneration(); // état au moment de l'enregistrement
+  const res = await window.studyide.writeFile({ filePath: tab.path, content: tab.doc.getValue() });
+  if (res.ok) { tab.cleanGen = gen; tab.dirty = !tab.doc.isClean(gen); renderProjectTabs(); }
   else alert('Erreur à l\'enregistrement : ' + res.error);
 }
 

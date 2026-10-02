@@ -316,6 +316,10 @@
 
     const keys = Object.assign({}, cm.getOption('extraKeys') || {});
     if (CM.commands.emmetExpandAbbreviation) {
+      // Le marquage des paires de balises re-scanne tout le document à CHAQUE frappe
+      // (mesuré : 17 ms par touche sur 5 000 lignes). On le coupe ; l'expansion avec Tab,
+      // le soulignement et l'aperçu des abréviations restent actifs.
+      cm.setOption('emmet', { mark: true, preview: true, markTagPairs: false, previewOpenTag: false, autoRenameTags: false });
       keys.Tab = 'emmetExpandAbbreviation';
       keys.Esc = 'emmetResetAbbreviation';
       keys.Enter = 'emmetInsertLineBreak';

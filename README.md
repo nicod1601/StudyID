@@ -71,3 +71,13 @@ Après avoir récupéré cette version : `npm install` (le script `postinstall` 
 - **Visionneuse PDF** : seules les pages proches de l'écran sont dessinées (les autres sont libérées), le zoom ne recharge plus le fichier, la détection d'exercices n'est faite qu'une fois par document.
 - **Terminal** : sortie regroupée (un message IPC toutes les ~10 ms) et rendu WebGL avec repli automatique sur le rendu DOM.
 - **Arrière-plan** : fenêtre masquée dans la zone de notification = quasi 0 % CPU (le throttling n'est plus désactivé).
+
+## 🧭 Navigation dans l'éditeur de projet
+
+- **Barres de défilement** verticale et horizontale toujours visibles (16 px) : on glisse le pouce, on clique sur la piste pour avancer d'une page, repères pour les occurrences du mot sélectionné et les résultats de recherche.
+- **Fil d'Ariane** : chemin du fichier + `classe › fonction` courante, cliquable.
+- **Aller au symbole** (`Ctrl+Shift+O`) : filtre flou, aperçu en direct, `Échap` revient à la position d'origine. Fonctionne pour JS/TS/JSX, Vue, Python, Java/C#/Kotlin, PHP, Go, Rust, Ruby, CSS/SCSS, HTML, Markdown, JSON, SQL.
+- **Barre d'état** : ligne/colonne, sélection, indentation, langage, retour à la ligne, zoom.
+- **Raccourcis** : `Ctrl+G` aller à la ligne · `Alt+↑/↓` déplacer les lignes · `Maj+Alt+↓/↑` dupliquer · `Ctrl+K Ctrl+0` / `Ctrl+K Ctrl+J` tout replier / déplier · `Alt+Z` retour à la ligne · `Ctrl+molette` ou `Ctrl +/-/0` zoom.
+- **Un document par onglet** : l'historique d'annulation (`Ctrl+Z`), le curseur, la position et les blocs repliés sont conservés quand on change d'onglet.
+- **Séparateur** éditeur / terminal redimensionnable (double-clic : taille par défaut).

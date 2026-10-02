@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="vendor/codemirror/addon/dialog/dialog.css" />
 <link rel="stylesheet" href="vendor/codemirror/addon/fold/foldgutter.css" />
 <link rel="stylesheet" href="vendor/codemirror/addon/hint/show-hint.css" />
+<link rel="stylesheet" href="vendor/codemirror/addon/search/matchesonscrollbar.css" />
 <link rel="stylesheet" href="vendor/xterm/xterm.css" />
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -150,9 +151,14 @@
           <button class="btn-ghost" id="fullscreenBtnProjet" title="Plein écran (masque la sidebar et les panneaux)">⛶</button>
         </div>
         <div class="symbol-bar hidden" id="projectSymbolBar" aria-label="Caractères spéciaux"></div>
-        <div class="editor-host" id="projectEditorHost"></div>
+        <div class="editor-breadcrumb hidden" id="projectBreadcrumb" aria-label="Fil d'Ariane"></div>
+        <div class="project-editor-body" id="projectEditorBody">
+          <div class="editor-host" id="projectEditorHost"></div>
+        </div>
+        <div class="editor-statusbar hidden" id="projectStatusBar"></div>
 
         <div class="project-terminal-panel" id="projectTerminalPanel">
+          <div class="term-splitter" id="projectTermSplitter" title="Glisse pour redimensionner (double-clic : taille par défaut)"></div>
           <div class="terminal-header">
             <div class="terminal-tabs" id="projectTermTabs"></div>
             <div class="actions">
@@ -721,6 +727,7 @@
   <script src="vendor/codemirror/addon/display/placeholder.js"></script>
   <script src="vendor/codemirror/addon/comment/comment.js"></script>
   <script src="lazy.js"></script>
+  <script src="editor-nav.js"></script>
   <script src="webdev.js"></script>
   <script src="renderer.js"></script>
 </body>

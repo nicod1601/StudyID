@@ -42,6 +42,8 @@
       CM + 'mode/toml/toml.js', CM + 'mode/properties/properties.js', CM + 'mode/diff/diff.js',
       CM + 'addon/hint/show-hint.js', CM + 'addon/hint/xml-hint.js', CM + 'addon/hint/html-hint.js',
       CM + 'addon/hint/css-hint.js', CM + 'addon/hint/javascript-hint.js', CM + 'addon/hint/anyword-hint.js',
+      CM + 'addon/scroll/simplescrollbars.js', CM + 'addon/scroll/annotatescrollbar.js', CM + 'addon/scroll/scrollpastend.js',
+      CM + 'addon/search/matchesonscrollbar.js', CM + 'addon/search/match-highlighter.js', CM + 'addon/search/jump-to-line.js',
       'vendor/emmet/emmet-codemirror.js'
     ]),
     xterm: () => loadAll([
