@@ -10,6 +10,19 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- ===================== BANDEAU DE RECHERCHE GLOBALE ===================== -->
+  <header id="topbar">
+    <div class="topbar-center">
+      <div class="global-search">
+        <span class="gs-icon" aria-hidden="true">🔎</span>
+        <input type="text" id="globalSearchInput" autocomplete="off" spellcheck="false"
+               placeholder="Rechercher un fichier, un cours, un exercice… (recherche locale)" />
+        <button class="gs-clear hidden" id="globalSearchClear" title="Effacer">✕</button>
+      </div>
+      <div class="search-results hidden" id="searchResults"></div>
+    </div>
+  </header>
+
   <div id="app">
     <!-- Barre latérale : matières -->
     <aside class="sidebar">
@@ -81,6 +94,7 @@
         </div>
         <div class="editor-host" id="editorHost"></div>
         <div class="output-panel">
+          <div class="v-resize" id="outputResize" title="Glisser pour ajuster la hauteur"></div>
           <div class="output-header">
             <span>Sortie console</span>
             <button id="clearOutputBtn" class="btn-ghost">Effacer</button>
@@ -212,7 +226,9 @@
           </div>
         </div>
 
-        <webview id="discordWebview" src="https://discord.com/app" allowpopups partition="persist:discord"></webview>
+        <!-- src défini seulement à l'ouverture de l'onglet (voir discord.js) :
+             évite que Discord se charge au démarrage et déclenche la popup passkey. -->
+        <webview id="discordWebview" allowpopups partition="persist:discord"></webview>
       </section>
     </div>
 
@@ -220,7 +236,7 @@
   </div>
 
   <!-- ===================== BULLE IA FLOTTANTE ===================== -->
-  <button class="ia-bubble-btn" id="iaBubbleBtn" title="Parler à l'IA">🤖</button>
+  <button class="ia-bubble-btn" id="iaBubbleBtn" title="IA locale (hors ligne)">🧠</button>
 
   <!-- ===================== BULLE MES NOTES ===================== -->
   <button class="notes-bubble-btn" id="notesBubbleBtn" title="Mes notes">📌</button>
@@ -230,6 +246,7 @@
 
   <div class="ia-drawer-overlay" id="notesDrawerOverlay"></div>
   <aside class="ia-drawer" id="notesDrawer">
+    <div class="drawer-resize" title="Glisser pour redimensionner"></div>
     <div class="ia-drawer-header">
       <div class="ia-drawer-title">📌 Mes notes</div>
       <div class="ia-drawer-header-actions">
@@ -251,8 +268,9 @@
 
   <div class="ia-drawer-overlay" id="iaDrawerOverlay"></div>
   <aside class="ia-drawer" id="iaDrawer">
+    <div class="drawer-resize" title="Glisser pour redimensionner"></div>
     <div class="ia-drawer-header">
-      <div class="ia-drawer-title">🤖 Assistant IA</div>
+      <div class="ia-drawer-title">🧠 IA locale</div>
       <div class="ia-drawer-header-actions">
         <button class="btn-ghost" id="iaToggleOptionsBtn" title="Options">⚙</button>
         <button class="btn-ghost" id="iaCloseDrawerBtn" title="Fermer">✕</button>
@@ -268,13 +286,7 @@
         <span class="dot" id="iaConnDot"></span> <span id="iaConnLabel">Vérification…</span>
       </div>
       <div class="ia-scope">
-        <label>Moteur de réponse</label>
-        <select id="iaEngineSelect">
-          <option value="auto">Auto (recommandé)</option>
-          <option value="local">Mini IA locale (hors ligne)</option>
-          <option value="search">Recherche seule (sans IA)</option>
-        </select>
-        <label>Chercher dans :</label>
+        <label>Appuyer la réponse sur :</label>
         <select id="iaScopeSelect">
           <option value="current">Cette matière</option>
           <option value="all">Toutes les matières</option>
@@ -283,7 +295,7 @@
           <input type="checkbox" id="iaUseContextCheckbox" checked />
           Utiliser ce que j'ai ouvert (fichier / exercice) comme contexte
         </label>
-        <button class="btn-primary" id="iaSettingsBtn">⚙ Réglages de la mini IA locale</button>
+        <button class="btn-primary" id="iaSettingsBtn">⬇ Télécharger / gérer les moteurs d'IA</button>
       </div>
       <div class="ia-index-status" id="iaIndexStatus"></div>
     </div>
@@ -293,11 +305,20 @@
     <main class="ia-area">
       <div class="ia-messages" id="iaMessages">
         <div class="ia-welcome">
-          👋 Pose une question sur tes cours. Je cherche d'abord dans les PDF
-          que tu as importés, puis je génère une réponse avec la mini IA
-          locale — 100 % hors ligne, sans clé ni compte. Ouvre un exercice de
-          code ou un document, et je pourrai en tenir compte directement.
+          🧠 Ici, c'est l'<strong>IA locale</strong> (hors ligne), via
+          <strong>Ollama</strong>. Il faut qu'Ollama soit installé et lancé
+          (<a href="#" class="open-ext-link" data-url="https://ollama.com">ollama.com</a>).
+          Ensuite, ouvre « ⚙ Options → ⬇ Télécharger / gérer les moteurs d'IA »,
+          choisis un moteur (Rapide, Équilibré ou Expert Code), puis pose ta
+          question : je réponds en m'appuyant sur tes cours et exercices.
+          <br><br>
+          🔎 Pour juste <em>retrouver</em> un fichier ou un cours, utilise la
+          <strong>barre de recherche en haut</strong> (instantanée, sans IA).
         </div>
+      </div>
+      <div class="ia-model-row" id="iaModelRow">
+        <label for="iaModelSelect">🧠 Moteur&nbsp;:</label>
+        <select id="iaModelSelect"></select>
       </div>
       <div class="ia-input-bar">
         <textarea id="iaInput" placeholder="Pose ta question ici... (Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne)"></textarea>
@@ -309,6 +330,7 @@
   <!-- ===================== TIROIR CHAT LAN ===================== -->
   <div class="ia-drawer-overlay" id="chatDrawerOverlay"></div>
   <aside class="ia-drawer" id="chatDrawer">
+    <div class="drawer-resize" title="Glisser pour redimensionner"></div>
     <div class="ia-drawer-header">
       <div class="ia-drawer-title">💬 Chat LAN</div>
       <div class="ia-drawer-header-actions">
@@ -356,7 +378,6 @@
     </div>
   </aside>
 
-  <!-- Modale : réglages IA -->
   <!-- Modale : réglages de l'éditeur -->
   <div class="modal-overlay" id="editorSettingsOverlay">
     <div class="modal modal-md">
@@ -421,11 +442,12 @@
 
   <div class="modal-overlay" id="iaSettingsOverlay">
     <div class="modal modal-md">
-      <h3>🧠 Mini IA locale</h3>
+      <h3>🧠 IA locale (via Ollama)</h3>
       <p class="settings-hint">
-        100 % hors ligne, gratuite, aucun compte ni carte bancaire. Choisis un
-        profil selon tes besoins. Un seul modèle actif à la fois ; change à
-        tout moment, aucune connexion requise une fois téléchargé.
+        100 % hors ligne, gratuite, aucun compte. Nécessite
+        <strong>Ollama</strong> installé et lancé (<a href="#" class="open-ext-link" data-url="https://ollama.com">ollama.com</a>).
+        Choisis un profil selon tes besoins ; le modèle se télécharge via Ollama.
+        Un seul modèle actif à la fois, aucune connexion requise une fois téléchargé.
       </p>
       <div id="localModelsList"></div>
       <div class="progress-bar-wrap hidden" id="localAiProgressWrap">
@@ -436,6 +458,18 @@
       <div class="modal-actions">
         <button class="btn-ghost" id="cancelIaSettingsBtn">Annuler</button>
         <button class="btn-primary" id="saveIaSettingsBtn">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : saisie de texte générique (remplace window.prompt) -->
+  <div class="modal-overlay" id="askModalOverlay">
+    <div class="modal modal-md">
+      <h3 id="askModalLabel">Saisis une valeur</h3>
+      <input type="text" id="askModalInput" autocomplete="off" />
+      <div class="modal-actions">
+        <button class="btn-ghost" id="askModalCancel">Annuler</button>
+        <button class="btn-primary" id="askModalOk">OK</button>
       </div>
     </div>
   </div>
@@ -617,7 +651,7 @@
   <script src="vendor/codemirror/addon/display/placeholder.js"></script>
   <script src="vendor/codemirror/addon/comment/comment.js"></script>
   <script src="vendor/pdfjs/pdf.min.js"></script>
-  <script src="renderer.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
 

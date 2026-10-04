@@ -1,0 +1,18 @@
+# Dépendances
+node_modules/
+server/node_modules/
+
+# Build / distribution
+release/
+dist/
+
+# Données locales du serveur de chat (comptes + historique, en clair)
+server/*.data
+
+# Modèles d'IA locale (plusieurs Go, retéléchargeables)
+models/
+
+# Divers
+*.log
+.DS_Store
+Thumbs.db

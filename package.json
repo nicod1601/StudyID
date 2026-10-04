@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "StudyIDE - Assistant de code Java/Python et organisateur de cours (Semestre 5)",
   "main": "main.js",
-  "author": "Toi",
+  "author": "Hugo VARAO GOMES DA SILVA",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -23,13 +23,10 @@
     },
     "files": [
       "main.js",
+      "main/**/*",
       "preload.js",
       "renderer/**/*",
       "data/**/*"
-    ],
-    "asarUnpack": [
-      "node_modules/node-llama-cpp/**/*",
-      "node_modules/@node-llama-cpp/**/*"
     ],
     "linux": {
       "target": [
@@ -50,7 +47,6 @@
     }
   },
   "dependencies": {
-    "node-llama-cpp": "^3.19.1",
     "pdfjs-dist": "^3.11.174"
   }
 }
