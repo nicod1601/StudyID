@@ -1,0 +1,25 @@
+/* =====================================================================
+   MES NOTES — bulle, tiroir, liste de notes capturées
+===================================================================== */
+
+.notes-bubble-btn {
+  position: fixed;
+  bottom: 96px;
+  right: 31px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-hi);
+  font-size: 19px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-md);
+  z-index: 200;
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.notes-bubble-btn:hover { transform: scale(1.08) translateX(-2px); border-color: rgba(79,227,255,0.35); }
+.notes-bubble-btn.active { background: var(--bg-3); color: var(--accent); border-color: var(--accent); }

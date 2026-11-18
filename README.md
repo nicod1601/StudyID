@@ -103,3 +103,27 @@ Après avoir récupéré cette version : `npm install` (le script `postinstall` 
 - **Rafraîchissement automatique** au retour sur la fenêtre (après `git pull`, `php artisan make:…`), sans clignotement ni perte du défilement.
 - **Fichiers** : les binaires (images, archives, bases SQLite) et les fichiers > 8 Mo ne sont plus chargés dans l'éditeur ; au-delà de 1 Mo ou avec une ligne géante (bundle minifié), la coloration est désactivée pour rester fluide.
 - **Laravel** : fichiers `.blade.php` (HTML + PHP), icônes `artisan` / `composer.json`, `vendor` grisé comme `node_modules`.
+
+## 🏗 Architecture du code
+
+```
+main.js                     point d'entrée Electron (7 lignes)
+preload.js                  pont sécurisé renderer ⇄ main (window.studyide)
+src/main/                   processus principal
+  index.js                  enregistre les canaux IPC, cycle de vie de l'appli
+  core/                     paths, db (JSON atomique), settings, window (fenêtre + tray)
+  services/                 IA locale (local-models = données, local-ai = moteur)
+  ipc/                      un module par domaine : data, files, edt, project, run, notes, grades, system, docs
+  web-dev.js                terminaux (node-pty), serveurs de dev, templates web
+renderer/                   interface
+  index.html                squelette ; les scripts sont chargés dans l'ordre (voir la fin du fichier)
+  css/                      une feuille par fonctionnalité (l'ordre des <link> = l'ordre de la cascade)
+  js/lib/                   chargement paresseux (lazy), navigation dans l'éditeur
+  js/core/                  state (état partagé), utils, navigation, boot (démarrage)
+  js/features/              une fonctionnalité = un dossier ou un fichier : code, cours, project, ia,
+                            notes, but, chat-lan, edt, search, codepad, web…
+```
+
+Règles : un fichier = une responsabilité ; chaque module IPC expose `register()` ; les scripts du renderer
+partagent le même espace global (pas de bundler), donc l'ordre de chargement dans `index.html` compte
+(`core/state` en premier, `core/boot` en dernier).

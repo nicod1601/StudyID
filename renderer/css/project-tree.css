@@ -1,0 +1,5 @@
+/* Arborescence : « afficher plus » et chargement */
+.ft-more { padding: 4px 8px; font-size: 11.5px; color: var(--text-low); cursor: pointer; border-radius: var(--radius-sm); }
+.ft-loading { padding: 4px 8px; font-size: 11.5px; color: var(--text-low); }
+.ft-more:hover { color: var(--accent); background: var(--bg-2); }
+.ft-row { content-visibility: auto; contain-intrinsic-size: auto 24px; }

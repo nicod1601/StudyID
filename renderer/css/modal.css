@@ -1,0 +1,52 @@
+/* ---------- Modal ---------- */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(4,5,9,0.72);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center; justify-content: center;
+  z-index: 50;
+}
+.modal-overlay.open { display: flex; animation: modal-fade 0.18s var(--ease); }
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  width: 340px;
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(79,227,255,0.04);
+}
+.modal h3 { margin: 0 0 14px 0; font-size: 15px; font-weight: 700; }
+.modal label { display: block; font-size: 11px; color: var(--text-low); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.modal input {
+  width: 100%;
+  padding: 9px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-hi);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s var(--ease);
+}
+.modal input:focus { border-color: rgba(79,227,255,0.45); }
+.lang-choice { display: flex; gap: 8px; }
+.lang-btn {
+  flex: 1;
+  padding: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-mid);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.lang-btn.active { border-color: var(--accent); color: var(--text-hi); background: var(--bg-3); box-shadow: var(--glow-accent); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--bg-4); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #333a55; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }

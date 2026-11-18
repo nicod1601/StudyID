@@ -1,0 +1,16 @@
+/* =====================================================================
+   PARAMÈTRES DE L'APPLI (arrière-plan, export, raccourci bureau)
+===================================================================== */
+
+.app-settings-section { margin: 14px 0; }
+.settings-sep-visible { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
+.app-settings-section .settings-subtitle { margin: 0 0 4px; font-size: 13px; color: var(--text-hi); }
+.app-settings-section .btn-primary { width: auto; padding: 9px 16px; margin-top: 8px; }
+.export-status {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-low);
+  line-height: 1.5;
+}
+.export-status.ok { color: var(--accent-hi); }
+.export-status.err { color: var(--danger); }
