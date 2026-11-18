@@ -857,11 +857,15 @@ function iconFor(name, isDirectory, isOpenDir) {
   const lower = name.toLowerCase();
   if (lower === 'dockerfile') return '🐳';
   if (lower === 'package.json') return '📦';
+  if (lower.endsWith('.blade.php')) return '🔥';
+  if (lower === 'artisan') return '🛠';
+  if (lower === 'composer.json') return '🎼';
   const ext = extOf(name);
   return (window.WebDev && window.WebDev.extraIcons[ext]) || EXT_ICONS[ext] || '📄';
 }
 
 function cmModeFor(name) {
+  if (/\.blade\.php$/i.test(name)) return 'application/x-httpd-php'; // Laravel Blade : HTML + PHP
   const webMode = window.WebDev && window.WebDev.cmModeFor(name);
   if (webMode) return webMode;
   const ext = extOf(name);
@@ -951,8 +955,9 @@ async function initProjectMode() {
 }
 
 async function openProjectFolder(root) {
+  const saved = loadProjectState(root);
   projectRoot = root;
-  expandedDirs = new Set([root.path]);
+  expandedDirs = new Set([root.path, ...((saved && saved.expanded) || [])]);
   openTabs = [];
   activeTabPath = null;
   el('projectTitle').textContent = '🗂 ' + root.name;
@@ -960,35 +965,95 @@ async function openProjectFolder(root) {
   el('projectToolbar').classList.remove('hidden');
   el('projectEditorToolbar').classList.remove('hidden');
   el('projectSymbolBar').classList.remove('hidden');
-  WebDev.setRoot(root);
+  el('fileTree').innerHTML = '<div class="empty-hint">⏳ Ouverture du projet…</div>';
   renderProjectTabs();
   showNoFile();
   el('runActiveFileBtn').disabled = true;
-  await renderFileTree();
-  startProjectTerminal();
+  await renderFileTree();          // l'arborescence s'affiche dès que la racine est lue
+  startProjectTerminal();          // le reste se prépare ensuite, sans bloquer
+  WebDev.setRoot(root);
+  restoreTabs(saved, root);
+}
+
+// ---------------------------------------------------------------------
+// Arborescence du projet
+//  - chargement paresseux dossier par dossier, rendu par paquets de 250 lignes
+//    (un dossier de 5 000 fichiers ne bloque plus l'interface)
+//  - un seul écouteur de clic pour tout l'arbre
+//  - reconstruction « hors écran » puis échange : pas de clignotement, le défilement est conservé
+//  - dossiers dépliés et onglets mémorisés par projet
+// ---------------------------------------------------------------------
+let treeGen = 0;                 // invalide les rendus en cours (changement de projet, nouveau rafraîchissement)
+const treeEntries = new Map();   // dossier -> entrées (pour « afficher plus »)
+const TREE_CHUNK = 250;
+let treeRefreshedAt = 0;
+let saveStateTimer = null;
+
+function saveProjectState() {
+  clearTimeout(saveStateTimer);
+  saveStateTimer = setTimeout(() => {
+    if (!projectRoot) return;
+    try {
+      localStorage.setItem('studyide.proj.' + projectRoot.path, JSON.stringify({
+        expanded: [...expandedDirs].slice(0, 200),
+        tabs: openTabs.map((t) => t.path).slice(0, 12),
+        active: activeTabPath
+      }));
+    } catch (e) { /* ignoré */ }
+  }, 400);
+}
+
+function loadProjectState(root) {
+  try { return JSON.parse(localStorage.getItem('studyide.proj.' + root.path) || 'null'); } catch (e) { return null; }
+}
+
+// Petit message temporaire en bas de l'écran
+function notify(msg) {
+  const t = document.createElement('div');
+  t.className = 'cp-toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2600);
 }
 
 async function renderFileTree() {
   const container = el('fileTree');
-  container.innerHTML = '';
+  const gen = ++treeGen;
   if (!projectRoot) {
-    container.innerHTML = '<div class="empty-hint" id="fileTreeEmpty">Ouvre un dossier de projet (ton dépôt Git, ton code VS Code, etc.) pour voir son arborescence ici.</div>';
+    container.innerHTML = '<div class="empty-hint" id="fileTreeEmpty">Ouvre un dossier de projet (ton dépôt Git, ton code VS Code, un projet Laravel…) pour voir son arborescence ici.</div>';
     return;
   }
-  const rootUl = document.createElement('div');
-  await buildTreeLevel(rootUl, projectRoot.path, 0);
-  container.appendChild(rootUl);
+  const scroll = container.scrollTop;
+  const rootDiv = document.createElement('div');
+  await buildTreeLevel(rootDiv, projectRoot.path, 0, gen);
+  if (gen !== treeGen) return; // un rendu plus récent a pris la place
+  container.replaceChildren(rootDiv);
+  container.scrollTop = scroll;
+  treeRefreshedAt = Date.now();
 }
 
-async function buildTreeLevel(parentEl, dirPath, depth) {
+async function buildTreeLevel(parentEl, dirPath, depth, gen) {
   const res = await window.studyide.readProjectDir(dirPath);
-  if (!res.ok) return;
-  for (const entry of res.entries) {
+  if (gen !== treeGen || !res.ok) return;
+  treeEntries.set(dirPath, res.entries);
+  await appendTreeRows(parentEl, dirPath, 0, depth, gen);
+}
+
+async function appendTreeRows(parentEl, dirPath, from, depth, gen) {
+  const entries = treeEntries.get(dirPath) || [];
+  const to = Math.min(entries.length, from + TREE_CHUNK);
+  const frag = document.createDocumentFragment();
+  const pending = [];
+  for (let i = from; i < to; i++) {
+    const entry = entries[i];
+    const isOpen = entry.isDirectory && expandedDirs.has(entry.path);
     const row = document.createElement('div');
     row.className = 'ft-row' + (entry.ignored ? ' ft-ignored' : '') + (activeTabPath === entry.path ? ' active' : '');
+    row.dataset.path = entry.path;
+    row.dataset.name = entry.name;
+    row.dataset.depth = depth;
+    if (entry.isDirectory) row.dataset.dir = '1';
     row.style.paddingLeft = (6 + depth * 2) + 'px';
-
-    const isOpen = entry.isDirectory && expandedDirs.has(entry.path);
     row.innerHTML = `
       <span class="ft-chevron${isOpen ? ' open' : ''}">${entry.isDirectory ? '▸' : ''}</span>
       <span class="ft-icon">${iconFor(entry.name, entry.isDirectory, isOpen)}</span>
@@ -997,64 +1062,116 @@ async function buildTreeLevel(parentEl, dirPath, depth) {
         <button data-act="rename" title="Renommer">✎</button>
         <button data-act="delete" title="Supprimer">🗑</button>
       </span>`;
-
     const childWrap = document.createElement('div');
     childWrap.className = 'ft-children';
     childWrap.style.display = isOpen ? '' : 'none';
-
-    row.onclick = async (e) => {
-      if (e.target.closest('.ft-row-actions')) return;
-      if (entry.isDirectory) {
-        const nowOpen = !expandedDirs.has(entry.path);
-        if (nowOpen) expandedDirs.add(entry.path); else expandedDirs.delete(entry.path);
-        row.querySelector('.ft-chevron').classList.toggle('open', nowOpen);
-        childWrap.style.display = nowOpen ? '' : 'none';
-        row.querySelector('.ft-icon').textContent = iconFor(entry.name, true, nowOpen);
-        if (nowOpen && !childWrap.dataset.loaded) {
-          childWrap.dataset.loaded = '1';
-          await buildTreeLevel(childWrap, entry.path, depth + 1);
-        }
-      } else {
-        await openFileInTab(entry.path, entry.name);
-      }
-    };
-
-    row.querySelector('[data-act="rename"]').onclick = async (e) => {
-      e.stopPropagation();
-      const name = prompt('Nouveau nom :', entry.name);
-      if (!name || name === entry.name) return;
-      const res2 = await window.studyide.renameProjectEntry({ oldPath: entry.path, newName: name });
-      if (!res2.ok) { alert(res2.error); return; }
-      renderFileTree();
-    };
-    row.querySelector('[data-act="delete"]').onclick = async (e) => {
-      e.stopPropagation();
-      if (!confirm(`Supprimer définitivement "${entry.name}" ?`)) return;
-      const res2 = await window.studyide.deleteProjectEntry(entry.path);
-      if (!res2.ok) { alert(res2.error); return; }
-      closeTab(entry.path, true);
-      renderFileTree();
-    };
-
-    parentEl.appendChild(row);
-    parentEl.appendChild(childWrap);
-    if (entry.isDirectory && isOpen) {
+    frag.append(row, childWrap);
+    if (isOpen) { // les dossiers déjà dépliés se chargent en parallèle
       childWrap.dataset.loaded = '1';
-      await buildTreeLevel(childWrap, entry.path, depth + 1);
+      pending.push(buildTreeLevel(childWrap, entry.path, depth + 1, gen));
     }
   }
+  if (to < entries.length) {
+    const more = document.createElement('div');
+    more.className = 'ft-more';
+    more.dataset.dirPath = dirPath;
+    more.dataset.next = to;
+    more.dataset.depth = depth;
+    more.style.paddingLeft = (6 + depth * 2) + 'px';
+    more.textContent = `… afficher ${Math.min(TREE_CHUNK, entries.length - to)} de plus (${entries.length - to} restants)`;
+    frag.appendChild(more);
+  }
+  parentEl.appendChild(frag);
+  await Promise.all(pending);
 }
 
-async function openFileInTab(filePath, name) {
+function bindTreeEvents() {
+  el('fileTree').addEventListener('click', async (e) => {
+    const more = e.target.closest('.ft-more');
+    if (more) {
+      const parent = more.parentElement;
+      more.remove();
+      await appendTreeRows(parent, more.dataset.dirPath, Number(more.dataset.next), Number(more.dataset.depth), treeGen);
+      return;
+    }
+    const row = e.target.closest('.ft-row');
+    if (!row) return;
+    const p = row.dataset.path, name = row.dataset.name, depth = Number(row.dataset.depth);
+    const act = e.target.closest('[data-act]');
+
+    if (act) {
+      e.stopPropagation();
+      if (act.dataset.act === 'rename') {
+        const newName = prompt('Nouveau nom :', name);
+        if (!newName || newName === name) return;
+        const r = await window.studyide.renameProjectEntry({ oldPath: p, newName });
+        if (!r.ok) { alert(r.error); return; }
+        renderFileTree();
+      } else {
+        if (!confirm(`Supprimer définitivement "${name}" ?`)) return;
+        const r = await window.studyide.deleteProjectEntry(p);
+        if (!r.ok) { alert(r.error); return; }
+        const sep = p.includes('\\') ? '\\' : '/';
+        openTabs.filter((t) => t.path === p || t.path.startsWith(p + sep)).forEach((t) => closeTab(t.path, true));
+        renderFileTree();
+      }
+      return;
+    }
+
+    if (row.dataset.dir) {
+      const childWrap = row.nextElementSibling;
+      const nowOpen = !expandedDirs.has(p);
+      if (nowOpen) expandedDirs.add(p); else expandedDirs.delete(p);
+      row.querySelector('.ft-chevron').classList.toggle('open', nowOpen);
+      row.querySelector('.ft-icon').textContent = iconFor(name, true, nowOpen);
+      childWrap.style.display = nowOpen ? '' : 'none';
+      saveProjectState();
+      if (nowOpen && !childWrap.dataset.loaded) {
+        childWrap.dataset.loaded = '1';
+        childWrap.innerHTML = '<div class="ft-loading">⏳ Chargement…</div>';
+        const gen = treeGen;
+        const tmp = document.createElement('div');
+        await buildTreeLevel(tmp, p, depth + 1, gen);
+        if (gen === treeGen) childWrap.replaceChildren(...tmp.childNodes);
+      }
+    } else {
+      openFileInTab(p, name);
+    }
+  });
+}
+
+// Rouvre les onglets du projet tels qu'on les avait laissés
+async function restoreTabs(saved, root) {
+  if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length) return;
+  for (const p of saved.tabs.slice(0, 8)) {
+    if (projectRoot !== root) return; // on a changé de projet entre-temps
+    await openFileInTab(p, p.split(/[\\/]/).pop(), { silent: true, activate: false });
+  }
+  if (projectRoot !== root) return;
+  const target = saved.active && openTabs.some((t) => t.path === saved.active) ? saved.active : (openTabs[0] && openTabs[0].path);
+  if (target) activateTab(target);
+}
+
+async function openFileInTab(filePath, name, opts = {}) {
   let tab = openTabs.find((t) => t.path === filePath);
   if (!tab) {
-    const res = await window.studyide.readFile(filePath);
-    if (!res.ok) { alert('Impossible d\'ouvrir ce fichier : ' + res.error); return; }
-    const mode = cmModeFor(name);
-    const doc = CodeMirror.Doc(res.content, mode); // un document par onglet : historique d'annulation, curseur et blocs repliés conservés
-    tab = { path: filePath, name, ext: extOf(name), dirty: false, doc, cleanGen: doc.changeGeneration(), mode };
-    openTabs.push(tab);
+    const res = await window.studyide.readProjectFile(filePath);
+    if (!res.ok) { if (!opts.silent) notify('⚠ ' + res.error); return; }
+    tab = openTabs.find((t) => t.path === filePath); // double-clic : l'onglet a pu être créé pendant la lecture
+    if (!tab) {
+      let mode = cmModeFor(name);
+      // Gros fichier ou ligne géante (bundle minifié) : sans coloration, sinon l'éditeur se fige
+      const heavy = res.size > 1048576 || (res.content.length > 200000 && /[^\n]{20000}/.test(res.content));
+      if (heavy) {
+        mode = 'text/plain';
+        if (!opts.silent) notify('Fichier volumineux : coloration désactivée pour rester fluide.');
+      }
+      const doc = CodeMirror.Doc(res.content, mode); // un document par onglet : historique d'annulation, curseur et blocs repliés conservés
+      tab = { path: filePath, name, ext: extOf(name), dirty: false, doc, cleanGen: doc.changeGeneration(), mode, heavy };
+      openTabs.push(tab);
+    }
   }
+  if (opts.activate === false) { renderProjectTabs(); return; }
   activateTab(filePath);
 }
 
@@ -1093,6 +1210,7 @@ function activateTab(filePath) {
   el('runActiveFileBtn').disabled = !['py', 'java', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'sh', 'html', 'htm'].includes(tab.ext);
   renderProjectTabs();
   highlightActiveInTree(filePath);
+  saveProjectState();
 }
 
 function highlightActiveInTree(filePath) {
@@ -1132,6 +1250,7 @@ function closeTab(filePath, skipConfirm) {
     if (!confirm(`"${tab.name}" a des modifications non enregistrées. Fermer quand même ?`)) return;
   }
   openTabs = openTabs.filter((t) => t.path !== filePath);
+  saveProjectState();
   if (activeTabPath === filePath) {
     activeTabPath = null;
     if (openTabs.length) {
@@ -1199,9 +1318,16 @@ function runActiveFileInTerminal() {
 }
 
 function bindProjectEvents() {
+  bindTreeEvents();
+  // En revenant sur la fenêtre (après un git pull, un artisan make:…), l'arbre se met à jour tout seul
+  window.addEventListener('focus', () => {
+    if (currentMode === 'projet' && projectRoot && Date.now() - treeRefreshedAt > 4000) renderFileTree();
+  });
   el('openProjectBtn').onclick = async () => {
     const root = await window.studyide.openProjectDialog();
-    if (root) await openProjectFolder(root);
+    if (!root) return;
+    if (openTabs.some((t) => t.dirty) && !confirm('Des fichiers ont des modifications non enregistrées. Ouvrir un autre projet quand même ?')) return;
+    await openProjectFolder(root);
   };
 
   el('projectRefreshBtn').onclick = () => renderFileTree();

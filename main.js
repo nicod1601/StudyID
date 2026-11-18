@@ -591,7 +591,10 @@ ipcMain.handle('edt:getCache', () => readEdtCache());
 
 // ---------- IPC : Mode Projet (ouvrir un dossier, arborescence, terminal) ----------
 
-const IGNORED_DIR_NAMES = new Set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', 'target', 'dist', 'build', '.idea', '.vscode']);
+const IGNORED_DIR_NAMES = new Set([
+  '.git', 'node_modules', 'vendor', '__pycache__', '.venv', 'venv', 'target', 'dist', 'build', '.idea', '.vscode',
+  '.next', '.nuxt', '.svelte-kit', '.turbo', '.parcel-cache', '.cache', '.gradle', '.pytest_cache', '.mypy_cache', '.tox', 'coverage'
+]);
 
 async function listDirEntries(dirPath) {
   const dirents = await fs.promises.readdir(dirPath, { withFileTypes: true });
@@ -608,6 +611,25 @@ async function listDirEntries(dirPath) {
     return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
   });
 }
+
+// Lecture d'un fichier du projet pour l'éditeur : asynchrone, refuse les binaires et les fichiers énormes
+// (sinon l'interface se fige sur une image, une base SQLite, un .zip ou un bundle de 80 Mo).
+const MAX_EDITABLE_BYTES = 8 * 1024 * 1024;
+ipcMain.handle('project:readFile', async (evt, filePath) => {
+  try {
+    const st = await fs.promises.stat(filePath);
+    if (st.isDirectory()) return { ok: false, error: 'C\'est un dossier.' };
+    if (st.size > MAX_EDITABLE_BYTES) return { ok: false, tooLarge: true, size: st.size, error: 'Fichier trop volumineux pour l\'éditeur (' + (st.size / 1048576).toFixed(1) + ' Mo).' };
+    const buf = await fs.promises.readFile(filePath);
+    const probe = buf.subarray(0, Math.min(buf.length, 8000));
+    if (probe.includes(0)) return { ok: false, binary: true, size: st.size, error: 'Fichier binaire (image, archive, base de données…) : non affiché.' };
+    let content = buf.toString('utf-8');
+    if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1); // BOM
+    return { ok: true, content, size: st.size };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 ipcMain.handle('project:openDialog', async () => {
   const res = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] });

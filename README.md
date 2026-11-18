@@ -95,3 +95,11 @@ Après avoir récupéré cette version : `npm install` (le script `postinstall` 
 - Bouton **⚡ Code rapide** (terminal du mode Projet, barre du bas du mode Web) ou **Ctrl+Maj+K**.
 - Cible **📄 Fichier actif** : copier le code ou l'insérer au curseur. Cible **🗂 Projet** : créer le fichier dans le dossier du projet ou lancer la commande dans le terminal.
 - Le catalogue est dans `renderer/codepad-snippets.js` : ajouter un snippet = ajouter un objet à la liste.
+
+## 🗂 Ouverture rapide des projets (VS Code, Laravel, Node…)
+
+- **Arborescence paresseuse** : seul le dossier racine est lu à l'ouverture ; les dossiers se chargent au dépliage, par paquets de 250 lignes (« afficher plus »). Un dossier de 5 000 fichiers (`storage/logs`, `vendor`, `node_modules`…) ne fige plus l'interface.
+- **Mémoire par projet** : dossiers dépliés, onglets ouverts et onglet actif sont retrouvés à la réouverture.
+- **Rafraîchissement automatique** au retour sur la fenêtre (après `git pull`, `php artisan make:…`), sans clignotement ni perte du défilement.
+- **Fichiers** : les binaires (images, archives, bases SQLite) et les fichiers > 8 Mo ne sont plus chargés dans l'éditeur ; au-delà de 1 Mo ou avec une ligne géante (bundle minifié), la coloration est désactivée pour rester fluide.
+- **Laravel** : fichiers `.blade.php` (HTML + PHP), icônes `artisan` / `composer.json`, `vendor` grisé comme `node_modules`.

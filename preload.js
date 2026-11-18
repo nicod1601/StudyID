@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('studyide', {
   openProjectDialog: () => ipcRenderer.invoke('project:openDialog'),
   reopenLastProject: () => ipcRenderer.invoke('project:reopenLast'),
   readProjectDir: (dirPath) => ipcRenderer.invoke('project:readDir', dirPath),
+  readProjectFile: (filePath) => ipcRenderer.invoke('project:readFile', filePath),
   newProjectFile: (payload) => ipcRenderer.invoke('project:newFile', payload),
   newProjectFolder: (payload) => ipcRenderer.invoke('project:newFolder', payload),
   createProjectFile: (payload) => ipcRenderer.invoke('project:createFile', payload),
