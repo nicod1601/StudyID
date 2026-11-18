@@ -104,6 +104,16 @@ Après avoir récupéré cette version : `npm install` (le script `postinstall` 
 - **Fichiers** : les binaires (images, archives, bases SQLite) et les fichiers > 8 Mo ne sont plus chargés dans l'éditeur ; au-delà de 1 Mo ou avec une ligne géante (bundle minifié), la coloration est désactivée pour rester fluide.
 - **Laravel** : fichiers `.blade.php` (HTML + PHP), icônes `artisan` / `composer.json`, `vendor` grisé comme `node_modules`.
 
+## 🖥 Virtualisation (Ctrl+7)
+
+Détecte automatiquement les hyperviseurs installés et liste leurs machines : **VirtualBox, VMware (Workstation/Player/Fusion), Hyper-V, QEMU/KVM (libvirt), WSL, Docker et Multipass**.
+
+- Actions selon l'état : démarrer, arrêter, redémarrer, pause/reprise, suspendre, instantané, forcer l'arrêt.
+- Pour chaque machine, des **commandes prêtes à copier** (le nom de la machine est déjà inséré) ou à lancer dans le terminal intégré ; les valeurs `<à compléter>` sont demandées.
+- Aucune commande n'est passée par un shell : les noms sont validés (pas d'injection).
+- Hyper-V demande de lancer StudyIDE en administrateur. Actualisation auto optionnelle (10 s).
+- Code : `src/main/virt/` (un fichier par hyperviseur) et `renderer/js/features/virt/`.
+
 ## 🏗 Architecture du code
 
 ```

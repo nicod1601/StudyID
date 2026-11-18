@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('studyide', {
   newProjectFile: (payload) => ipcRenderer.invoke('project:newFile', payload),
   newProjectFolder: (payload) => ipcRenderer.invoke('project:newFolder', payload),
   createProjectFile: (payload) => ipcRenderer.invoke('project:createFile', payload),
+  virtScan: (ids) => ipcRenderer.invoke('virt:scan', ids),
+  virtAction: (payload) => ipcRenderer.invoke('virt:action', payload),
   renameProjectEntry: (payload) => ipcRenderer.invoke('project:rename', payload),
   deleteProjectEntry: (targetPath) => ipcRenderer.invoke('project:delete', targetPath),
 

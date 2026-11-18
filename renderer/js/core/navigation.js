@@ -1,8 +1,8 @@
 // Navigation entre les sections, raccourcis clavier globaux, restauration du dernier état.
 
-// Raccourcis : Ctrl+1…6 pour changer de section (Ctrl+K = recherche, voir search.js)
+// Raccourcis : Ctrl+1…7 pour changer de section (Ctrl+K = recherche, voir search.js)
 function bindGlobalShortcuts() {
-  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'discord'];
+  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'virt', 'discord'];
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
     const n = Number(e.key);
@@ -15,7 +15,7 @@ function restoreLastState() {
   try { last = JSON.parse(localStorage.getItem('studyide.last') || 'null'); } catch (e) { /* ignoré */ }
   if (!last) return;
   if (last.course && db.courses.some((c) => c.code === last.course)) selectCourse(last.course);
-  if (last.mode && ['cours', 'projet', 'web', 'edt'].includes(last.mode)) switchMode(last.mode);
+  if (last.mode && ['cours', 'projet', 'web', 'edt', 'virt'].includes(last.mode)) switchMode(last.mode);
 }
 // =====================================================================
 // MODE COURS : documents PDF + détection automatique des exercices
@@ -28,17 +28,20 @@ function switchMode(mode) {
   el('modeProjetBtn').classList.toggle('active', mode === 'projet');
   el('modeEdtBtn').classList.toggle('active', mode === 'edt');
   el('modeDiscordBtn').classList.toggle('active', mode === 'discord');
+  el('modeVirtBtn').classList.toggle('active', mode === 'virt');
   el('modeWebBtn').classList.toggle('active', mode === 'web');
   el('codeContent').classList.toggle('hidden', mode !== 'code');
   el('coursContent').classList.toggle('hidden', mode !== 'cours');
   el('projetContent').classList.toggle('hidden', mode !== 'projet');
   el('edtContent').classList.toggle('hidden', mode !== 'edt');
   el('discordContent').classList.toggle('hidden', mode !== 'discord');
+  el('virtContent').classList.toggle('hidden', mode !== 'virt');
   el('webContent').classList.toggle('hidden', mode !== 'web');
   if (mode === 'cours' && currentCourse) renderDocList();
   rememberState();
   if (mode === 'projet') initProjectMode();
   if (mode === 'edt') initEdtMode();
   if (mode === 'web') WebDev.onShow();
+  if (mode === 'virt') initVirtMode();
   updateIaContextChip();
 }

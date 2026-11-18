@@ -1,0 +1,56 @@
+/* Section Virtualisation */
+.virt-layout { display: flex; height: 100%; min-height: 0; width: 100%; }
+.virt-side { width: 290px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--bg-1); border-right: 1px solid var(--line); min-height: 0; }
+.virt-side-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.virt-title { font-weight: 700; color: var(--text-hi); }
+.virt-auto { font-size: 12px; color: var(--text-mid); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+#virtRefreshBtn.spinning { animation: virt-spin 0.9s linear infinite; }
+@keyframes virt-spin { to { transform: rotate(360deg); } }
+.virt-providers { display: flex; flex-wrap: wrap; gap: 6px; }
+.virt-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-mid); cursor: pointer; }
+.virt-chip b { background: var(--bg-4); color: var(--text-hi); border-radius: 8px; padding: 0 6px; font-size: 11px; }
+.virt-chip.ok { color: var(--text-hi); }
+.virt-chip.off { opacity: 0.4; cursor: default; }
+.virt-chip.active { border-color: var(--accent); background: var(--bg-3); }
+.virt-filter { width: 100%; padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--bg-0); color: var(--text-hi); }
+.virt-list { flex: 1; overflow: auto; min-height: 0; }
+.virt-group-head { display: flex; justify-content: space-between; margin: 12px 0 4px; font-size: 12px; font-weight: 700; color: var(--text-mid); text-transform: uppercase; letter-spacing: 0.04em; }
+.virt-group-head small { font-weight: 400; text-transform: none; color: var(--text-low); }
+.virt-vm { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: var(--radius); cursor: pointer; color: var(--text-hi); }
+.virt-vm:hover { background: var(--bg-2); }
+.virt-vm.selected { background: var(--bg-3); box-shadow: inset 2px 0 0 var(--accent); }
+.virt-vm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.virt-vm-os { font-size: 11px; color: var(--text-low); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.virt-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--text-low); display: inline-block; }
+.virt-dot.running { background: var(--run); box-shadow: 0 0 6px var(--run); }
+.virt-dot.paused, .virt-dot.suspended { background: #e6b422; }
+.virt-dot.busy { background: var(--accent); animation: virt-pulse 1s ease-in-out infinite; }
+@keyframes virt-pulse { 50% { opacity: 0.3; } }
+.virt-none, .virt-error { font-size: 12px; color: var(--text-low); padding: 4px 9px; }
+.virt-error { color: var(--danger); white-space: pre-wrap; }
+.virt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.virt-detail { flex: 1; overflow: auto; padding: 16px 20px; min-height: 0; }
+.virt-terminal { flex: none; }
+.virt-terminal.collapsed #virtToggleTermBtn { transform: rotate(180deg); }
+.virt-welcome h3 { margin: 0 0 4px; color: var(--text-hi); }
+.virt-welcome p { margin: 0 0 14px; color: var(--text-mid); }
+.virt-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; }
+.virt-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.virt-card h2 { margin: 0; font-size: 18px; color: var(--text-hi); }
+.virt-card-sub { color: var(--text-mid); font-size: 12px; margin-top: 3px; }
+.virt-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--bg-3); font-size: 12px; color: var(--text-hi); white-space: nowrap; }
+.virt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.virt-danger { color: var(--danger); border-color: var(--danger); }
+.virt-result { margin: 12px 0 0; padding: 8px 10px; border-radius: var(--radius); background: var(--bg-0); font-size: 12px; white-space: pre-wrap; max-height: 140px; overflow: auto; }
+.virt-result.ok { border-left: 3px solid var(--run); }
+.virt-result.err { border-left: 3px solid var(--danger); }
+.virt-subtitle { margin: 4px 0 8px; font-size: 13px; color: var(--text-mid); }
+.virt-section { margin: 10px 0; }
+.virt-section > summary { cursor: pointer; color: var(--text-mid); padding: 4px 0; }
+.virt-cmd { background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--radius); margin: 8px 0; overflow: hidden; }
+.virt-cmd.danger { border-color: var(--danger); }
+.virt-cmd-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; flex-wrap: wrap; }
+.virt-cmd-title { font-weight: 600; color: var(--text-hi); }
+.virt-cmd-desc { color: var(--text-low); font-size: 12px; flex: 1; min-width: 120px; }
+.virt-cmd-btns { display: inline-flex; gap: 6px; margin-left: auto; }
+.virt-cmd-code { margin: 0; padding: 8px 12px; background: var(--bg-0); color: var(--text-hi); font: 12.5px/1.5 ui-monospace, Consolas, monospace; overflow-x: auto; user-select: text; }

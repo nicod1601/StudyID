@@ -39,6 +39,7 @@ app.on('window-all-closed', () => {
   require('./ipc/grades'),
   require('./ipc/system'),
   require('./ipc/docs'),
+  require('./ipc/virt'),
 ].forEach((m) => m.register());
 
 // ---------- IPC : Terminal intégré + Développement Web ----------

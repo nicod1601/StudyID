@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="css/search.css" />
 <link rel="stylesheet" href="css/codepad.css" />
 <link rel="stylesheet" href="css/project-tree.css" />
+<link rel="stylesheet" href="css/virtualisation.css" />
 </head>
 <body>
   <div id="app">
@@ -54,6 +55,7 @@
         <button class="mode-btn" id="modeProjetBtn">🗂 Projet</button>
         <button class="mode-btn" id="modeWebBtn">🌐 Web</button>
         <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
+        <button class="mode-btn" id="modeVirtBtn">🖥 Virtualisation</button>
         <button class="mode-btn" id="modeDiscordBtn">🎮 Discord</button>
       </div>
 
@@ -363,6 +365,37 @@
           <p class="edt-import-meta" id="edtImportMeta"></p>
         </div>
       </section>
+    </div>
+
+    <!-- ===================== MODE VIRTUALISATION ===================== -->
+    <div class="content-wrapper hidden" id="virtContent">
+      <div class="virt-layout">
+        <aside class="virt-side">
+          <div class="virt-side-top">
+            <div class="virt-title">🖥 Virtualisation</div>
+            <div class="actions">
+              <label class="virt-auto" title="Actualise l'état toutes les 10 secondes"><input type="checkbox" id="virtAutoChk" /> Auto</label>
+              <button class="btn-ghost" id="virtRefreshBtn" title="Détecter à nouveau">⟳</button>
+            </div>
+          </div>
+          <div class="virt-providers" id="virtProviders"></div>
+          <input type="search" id="virtFilter" class="virt-filter" placeholder="Filtrer les machines…" />
+          <div class="virt-list" id="virtList"></div>
+        </aside>
+        <main class="virt-main">
+          <div class="virt-detail" id="virtDetail"></div>
+          <div class="project-terminal-panel virt-terminal" id="virtTerminalPanel">
+            <div class="terminal-header">
+              <div class="terminal-tabs" id="virtTermTabs"></div>
+              <div class="actions">
+                <button class="btn-ghost" id="virtNewTermBtn" title="Nouveau terminal">＋</button>
+                <button class="btn-ghost" id="virtToggleTermBtn" title="Replier/déplier">▾</button>
+              </div>
+            </div>
+            <div class="terminal-body"><div class="term-host" id="virtTermHost"></div></div>
+          </div>
+        </main>
+      </div>
     </div>
 
     <!-- ===================== MODE DISCORD ===================== -->
@@ -804,6 +837,9 @@
   <script src="js/features/chat-lan.js"></script>
   <script src="js/features/edt.js"></script>
   <script src="js/features/discord.js"></script>
+  <script src="js/features/virt/commands.js"></script>
+  <script src="js/features/virt/virt.js"></script>
+  <script src="js/features/virt/virt-detail.js"></script>
   <script src="js/features/search/search.js"></script>
   <script src="js/features/codepad/snippets.js"></script>
   <script src="js/features/codepad/codepad.js"></script>
