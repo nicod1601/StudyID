@@ -81,3 +81,17 @@ Après avoir récupéré cette version : `npm install` (le script `postinstall` 
 - **Raccourcis** : `Ctrl+G` aller à la ligne · `Alt+↑/↓` déplacer les lignes · `Maj+Alt+↓/↑` dupliquer · `Ctrl+K Ctrl+0` / `Ctrl+K Ctrl+J` tout replier / déplier · `Alt+Z` retour à la ligne · `Ctrl+molette` ou `Ctrl +/-/0` zoom.
 - **Un document par onglet** : l'historique d'annulation (`Ctrl+Z`), le curseur, la position et les blocs repliés sont conservés quand on change d'onglet.
 - **Séparateur** éditeur / terminal redimensionnable (double-clic : taille par défaut).
+
+
+## 🔎 Recherche globale
+
+- Barre en haut de la sidebar, raccourci **Ctrl+K** (depuis n'importe où).
+- Cherche en même temps dans les **matières**, les **exercices de code**, les **PDF** et le **contenu des PDF** (passages + exercices détectés), sans tenir compte des accents ni de la casse ; tous les mots saisis doivent être présents.
+- `↑ ↓` pour naviguer, `Entrée` pour ouvrir, `Échap` pour fermer. Un résultat dans un PDF l'ouvre directement à la bonne page.
+- Raccourcis : **Ctrl+1…6** pour changer de section.
+
+## ⚡ Code rapide (snippets web)
+
+- Bouton **⚡ Code rapide** (terminal du mode Projet, barre du bas du mode Web) ou **Ctrl+Maj+K**.
+- Cible **📄 Fichier actif** : copier le code ou l'insérer au curseur. Cible **🗂 Projet** : créer le fichier dans le dossier du projet ou lancer la commande dans le terminal.
+- Le catalogue est dans `renderer/codepad-snippets.js` : ajouter un snippet = ajouter un objet à la liste.

@@ -821,7 +821,7 @@
   }
 
   window.WebDev = {
-    TerminalTabs, getRoot, setRoot, onShow, previewFile,
+    TerminalTabs, getRoot, setRoot, onShow, previewFile, runInTerminal,
     cmModeFor, extraIcons: EXTRA_ICONS, enhanceEditor, mountSymbolBar
   };
 })();

@@ -51,6 +51,14 @@
         <span class="dot" id="dotJava"></span> Java
       </div>
 
+      <div class="sidebar-search" id="sidebarSearchWrap">
+        <span class="ss-icon" aria-hidden="true">🔎</span>
+        <input type="text" id="sidebarSearch" placeholder="Rechercher cours, exos, PDF…" spellcheck="false" autocomplete="off" aria-label="Rechercher" />
+        <kbd class="ss-kbd" id="sidebarSearchKbd">Ctrl K</kbd>
+        <button class="ss-clear hidden" id="sidebarSearchClear" title="Effacer (Échap)">✕</button>
+        <div class="search-results hidden" id="searchResults" role="listbox"></div>
+      </div>
+
       <div class="sidebar-scroll" id="courseList"></div>
 
       <button class="btn-workspace" id="openWorkspaceBtn" title="Ouvrir le dossier des cours">
@@ -163,6 +171,7 @@
             <div class="terminal-tabs" id="projectTermTabs"></div>
             <div class="actions">
               <span class="terminal-cwd" id="terminalCwd"></span>
+              <button class="btn-ghost" id="codePadBtn" title="Code rapide : snippets web à copier, insérer ou lancer (Ctrl+Maj+K)">⚡ Code rapide</button>
               <button class="btn-run" id="runActiveFileBtn" disabled>▶ Exécuter le fichier</button>
               <button class="btn-ghost" id="newTerminalBtn" title="Nouveau terminal">＋</button>
               <button class="btn-ghost" id="restartTerminalBtn" title="Redémarrer le terminal actif">⟳</button>
@@ -246,6 +255,7 @@
             <button class="web-btab" data-pane="console">🧾 Console de la page <span class="web-badge hidden" id="webConsoleBadge">0</span></button>
             <button class="web-btab" data-pane="terminal">🖥 Terminal</button>
             <span class="web-bottom-spacer"></span>
+            <button class="btn-ghost" id="webCodePadBtn" title="Code rapide : snippets web (Ctrl+Maj+K)">⚡</button>
             <button class="btn-ghost" id="webNewTermBtn" title="Nouveau terminal">＋</button>
             <button class="btn-ghost" id="webClearLogsBtn" title="Effacer l’affichage">🧹</button>
             <button class="btn-ghost" id="webToggleBottomBtn" title="Replier/déplier">▾</button>
@@ -282,6 +292,24 @@
           <button class="btn-ghost web-outline-btn" id="webNewCancelBtn">Annuler</button>
           <button class="btn-primary" id="webNewCreateBtn" style="width:auto">Créer</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modale : Code rapide (snippets web) -->
+    <div class="modal-overlay" id="codePadModal">
+      <div class="modal codepad">
+        <div class="cp-head">
+          <h3>⚡ Code rapide</h3>
+          <div class="cp-target" id="cpTarget" role="tablist" aria-label="Cible">
+            <button class="cp-target-btn active" data-target="file" role="tab">📄 Fichier actif</button>
+            <button class="cp-target-btn" data-target="project" role="tab">🗂 Projet</button>
+          </div>
+          <button class="btn-ghost" id="cpCloseBtn" title="Fermer (Échap)">✕</button>
+        </div>
+        <div class="cp-context" id="cpContext"></div>
+        <input type="text" id="cpSearch" placeholder="Filtrer : flexbox, fetch, express, git…" spellcheck="false" autocomplete="off" />
+        <div class="cp-cats" id="cpCats"></div>
+        <div class="cp-list" id="cpList"></div>
       </div>
     </div>
 
@@ -730,6 +758,9 @@
   <script src="editor-nav.js"></script>
   <script src="webdev.js"></script>
   <script src="renderer.js"></script>
+  <script src="search.js"></script>
+  <script src="codepad-snippets.js"></script>
+  <script src="codepad.js"></script>
 </body>
 </html>
 

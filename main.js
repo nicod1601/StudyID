@@ -648,6 +648,23 @@ ipcMain.handle('project:newFile', (evt, { dirPath, name }) => {
   }
 });
 
+// Crée un fichier avec son contenu (sous-dossiers créés au besoin). Le chemin reste confiné au dossier du projet.
+ipcMain.handle('project:createFile', (evt, { rootPath, relPath, content, overwrite }) => {
+  try {
+    if (!rootPath || !relPath || typeof relPath !== 'string') return { ok: false, error: 'Chemin invalide.' };
+    const root = path.resolve(rootPath);
+    const target = path.resolve(root, relPath.trim());
+    if (target !== root && !target.startsWith(root + path.sep)) return { ok: false, error: 'Le fichier doit rester dans le dossier du projet.' };
+    if (target === root) return { ok: false, error: 'Nom de fichier invalide.' };
+    if (fs.existsSync(target) && !overwrite) return { ok: false, exists: true, error: 'Ce fichier existe déjà.' };
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, String(content ?? ''), 'utf-8');
+    return { ok: true, path: target };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle('project:newFolder', (evt, { dirPath, name }) => {
   try {
     const safeName = name.trim();

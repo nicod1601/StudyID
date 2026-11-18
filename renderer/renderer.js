@@ -162,6 +162,7 @@ async function init() {
   el('chatBubbleBtn').classList.toggle('hidden', appSettings.showChatBubble === false);
 
   // L'interface devient cliquable tout de suite
+  bindCourseListEvents();
   bindEvents();
   bindCoursEvents();
   bindProjectEvents();
@@ -183,8 +184,30 @@ async function init() {
     el('dotJava').classList.toggle('ok', env.java && env.javac);
   });
 
+  bindGlobalShortcuts();
+  restoreLastState();
+
   await loadEdtReminderSettings();
   startEdtReminderLoop();
+}
+
+// Raccourcis : Ctrl+1…6 pour changer de section (Ctrl+K = recherche, voir search.js)
+function bindGlobalShortcuts() {
+  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'discord'];
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+    const n = Number(e.key);
+    if (n >= 1 && n <= modes.length) { e.preventDefault(); switchMode(modes[n - 1]); }
+  });
+}
+
+// Retrouve la dernière matière et la dernière section utilisées
+function restoreLastState() {
+  let last = null;
+  try { last = JSON.parse(localStorage.getItem('studyide.last') || 'null'); } catch (e) { /* ignoré */ }
+  if (!last) return;
+  if (last.course && db.courses.some((c) => c.code === last.course)) selectCourse(last.course);
+  if (last.mode && ['cours', 'projet', 'web', 'edt'].includes(last.mode)) switchMode(last.mode);
 }
 
 function renderCourseList() {
@@ -193,17 +216,41 @@ function renderCourseList() {
   for (const course of db.courses) {
     const div = document.createElement('div');
     div.className = 'course-item' + (currentCourse === course.code ? ' active' : '');
-    div.innerHTML = `<span class="code">${course.code}</span>${course.name}`;
-    div.onclick = () => selectCourse(course.code);
+    div.dataset.code = course.code;
+    div.innerHTML = `<span class="code">${escapeHtml(course.code)}</span>${escapeHtml(course.name)}`;
     list.appendChild(div);
   }
 }
 
-function selectCourse(code) {
+// Un seul écouteur pour toute la liste (au lieu d'un par matière)
+function bindCourseListEvents() {
+  el('courseList').addEventListener('click', (e) => {
+    const item = e.target.closest('.course-item');
+    if (item) selectCourse(item.dataset.code);
+  });
+}
+
+// Change juste la classe "active" : pas de reconstruction de la liste à chaque clic
+function markActiveCourse() {
+  el('courseList').querySelectorAll('.course-item').forEach((n) => n.classList.toggle('active', n.dataset.code === currentCourse));
+}
+
+// Enregistre en silence l'exercice modifié avant d'en changer (évite de perdre du code)
+async function flushDirty() {
+  if (dirty && currentExercise && cm) await saveCurrent();
+}
+
+function rememberState() {
+  try { localStorage.setItem('studyide.last', JSON.stringify({ course: currentCourse, mode: currentMode })); } catch (e) { /* ignoré */ }
+}
+
+async function selectCourse(code) {
+  await flushDirty();
   currentCourse = code;
   currentExercise = null;
   currentDoc = null;
-  renderCourseList();
+  markActiveCourse();
+  rememberState();
   const course = db.courses.find((c) => c.code === code);
   el('courseTitle').textContent = `${course.code} — ${course.name}`;
   el('coursTitle').textContent = `${course.code} — ${course.name}`;
@@ -228,15 +275,18 @@ function renderExerciseList() {
     card.dataset.status = ex.status;
     const icon = ex.language === 'java' ? '☕' : '🐍';
     card.innerHTML = `
-      <div class="name">${icon} ${ex.name}</div>
+      <div class="name">${icon} ${escapeHtml(ex.name)}</div>
       <div class="meta">
         <span class="badge ${ex.status}">${statusLabel(ex.status)}</span>
         <button class="del-ex" title="Supprimer">✕</button>
       </div>`;
-    card.onclick = (e) => {
+    card.dataset.id = ex.id;
+    card.onclick = async (e) => {
       if (e.target.classList.contains('del-ex')) return;
+      if (currentExercise?.id === ex.id) return;
+      await flushDirty();
       currentExercise = ex;
-      renderExerciseList();
+      markSelectedExercise();
       loadExerciseIntoEditor(ex);
     };
     card.querySelector('.del-ex').onclick = async (e) => {
@@ -248,6 +298,32 @@ function renderExerciseList() {
       }
     };
     listEl.appendChild(card);
+  }
+}
+
+function markSelectedExercise() {
+  el('exerciseList').querySelectorAll('.exercise-card').forEach((c) => c.classList.toggle('selected', c.dataset.id === currentExercise?.id));
+}
+
+// Ouvre un exercice depuis n'importe où (recherche globale…)
+async function openExercise(ex) {
+  if (currentMode !== 'code') switchMode('code');
+  if (currentCourse !== ex.courseCode) await selectCourse(ex.courseCode);
+  else await flushDirty();
+  currentExercise = ex;
+  renderExerciseList();
+  loadExerciseIntoEditor(ex);
+  document.querySelector(`#exerciseList .exercise-card[data-id="${ex.id}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+
+// Ouvre un PDF (et défile jusqu'à la page demandée) depuis n'importe où
+async function openDocumentAt(doc, page) {
+  if (currentMode !== 'cours') switchMode('cours');
+  if (currentCourse !== doc.courseCode) await selectCourse(doc.courseCode);
+  if (!(currentDoc && currentDoc.id === doc.id && pdfDoc)) await openDocument(doc);
+  if (page > 1) {
+    const target = el('pdfViewport').querySelector(`.pdf-page[data-page-num="${page}"]`);
+    if (target) el('pdfViewport').scrollTop = Math.max(0, target.offsetTop - 12);
   }
 }
 
@@ -386,6 +462,7 @@ function switchMode(mode) {
   el('discordContent').classList.toggle('hidden', mode !== 'discord');
   el('webContent').classList.toggle('hidden', mode !== 'web');
   if (mode === 'cours' && currentCourse) renderDocList();
+  rememberState();
   if (mode === 'projet') initProjectMode();
   if (mode === 'edt') initEdtMode();
   if (mode === 'web') WebDev.onShow();
@@ -407,8 +484,9 @@ async function renderDocList() {
   for (const doc of docs) {
     const card = document.createElement('div');
     card.className = 'doc-card' + (currentDoc?.id === doc.id ? ' selected' : '');
+    card.dataset.id = doc.id;
     card.innerHTML = `
-      <div class="name">📄 ${doc.fileName}</div>
+      <div class="name">📄 ${escapeHtml(doc.fileName)}</div>
       <div class="meta"><span>${doc.seeded ? 'Fourni avec l\'appli' : 'Importé'}</span><button class="del-ex" title="Supprimer">✕</button></div>`;
     card.onclick = (e) => {
       if (e.target.classList.contains('del-ex')) return;
@@ -418,6 +496,7 @@ async function renderDocList() {
       e.stopPropagation();
       if (confirm(`Supprimer "${doc.fileName}" (et son fichier) ?`)) {
         await window.studyide.deleteDocument({ id: doc.id, deleteFile: true });
+        window.SearchBar?.invalidate();
         if (currentDoc?.id === doc.id) { currentDoc = null; clearPdfViewport(); }
         renderDocList();
       }
@@ -453,7 +532,7 @@ function teardownPdfViewer() {
 async function openDocument(doc) {
   const session = ++pdfSession;
   currentDoc = doc;
-  renderDocList();
+  el('docList').querySelectorAll('.doc-card').forEach((c) => c.classList.toggle('selected', c.dataset.id === doc.id));
   el('docTabInfo').textContent = doc.fileName;
   const viewport = el('pdfViewport');
   viewport.innerHTML = '<div class="pdf-empty">⏳ Chargement du PDF…</div>';
@@ -718,7 +797,7 @@ function bindCoursEvents() {
   el('importPdfBtn').onclick = async () => {
     if (!currentCourse) { alert('Choisis d’abord une matière à gauche.'); return; }
     const doc = await window.studyide.importPdfDialog(currentCourse);
-    if (doc) { renderDocList(); openDocument(doc); }
+    if (doc) { window.SearchBar?.invalidate(); renderDocList(); openDocument(doc); }
   };
 
   el('zoomInBtn').onclick = () => { pdfScale = Math.min(pdfScale + 0.15, 2.5); el('zoomLabel').textContent = Math.round(pdfScale / 1.1 * 100) + '%'; relayoutPdf(); };
