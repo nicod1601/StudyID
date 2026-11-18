@@ -42,14 +42,26 @@ if %errorlevel% neq 0 (
 echo Node.js / npm detecte : OK
 echo.
 
-if not exist "node_modules" (
-    echo Premiere installation des dependances de StudyIDE.
+REM Installation si Electron est absent (couvre aussi une installation precedente interrompue)
+if not exist "node_modules\electron\dist" (
+    echo Installation des dependances de StudyIDE.
     echo Cela peut prendre 1 a 2 minutes, merci de patienter...
     echo.
-    call npm install
-    if %errorlevel% neq 0 (
+    REM node-llama-cpp, IA locale optionnelle, ne doit jamais bloquer l'installation :
+    REM sans Git ou si Windows bloque son binaire, StudyIDE se lance quand meme.
+    call npm install --node-llama-cpp-postinstall=skip
+    if errorlevel 1 (
         echo.
         echo Une erreur est survenue pendant l'installation.
+        echo Si le message parle de EPERM, ferme les autres fenetres et ton antivirus
+        echo le temps de l'installation, supprime le dossier node_modules puis relance.
+        pause
+        exit /b 1
+    )
+    if not exist "node_modules\electron\dist" (
+        echo.
+        echo Electron n'a pas pu etre telecharge. Verifie ta connexion internet,
+        echo supprime le dossier node_modules puis relance ce fichier.
         pause
         exit /b 1
     )

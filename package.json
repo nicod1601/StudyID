@@ -10,7 +10,7 @@
     "dist:linux": "electron-builder --linux deb AppImage",
     "dist:win": "electron-builder --win nsis portable",
     "dist:all": "electron-builder -mwl",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps || echo [postinstall] reconstruction des modules natifs ignoree"
   },
   "devDependencies": {
     "electron": "^37.0.0",
@@ -53,8 +53,10 @@
     }
   },
   "dependencies": {
-    "node-llama-cpp": "^3.19.1",
     "pdfjs-dist": "^3.11.174",
     "node-pty": "^1.1.0"
+  },
+  "optionalDependencies": {
+    "node-llama-cpp": "^3.19.1"
   }
 }
