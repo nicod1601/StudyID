@@ -1,8 +1,8 @@
 // Navigation entre les sections, raccourcis clavier globaux, restauration du dernier état.
 
-// Raccourcis : Ctrl+1…7 pour changer de section (Ctrl+K = recherche, voir search.js)
+// Raccourcis : Ctrl+1…8 pour changer de section (Ctrl+K = recherche, voir search.js)
 function bindGlobalShortcuts() {
-  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'virt', 'simplex'];
+  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'virt', 'simplex', 'opl'];
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
     const n = Number(e.key);
@@ -15,7 +15,7 @@ function restoreLastState() {
   try { last = JSON.parse(localStorage.getItem('studyide.last') || 'null'); } catch (e) { /* ignoré */ }
   if (!last) return;
   if (last.course && db.courses.some((c) => c.code === last.course)) selectCourse(last.course);
-  if (last.mode && ['cours', 'projet', 'web', 'edt', 'virt', 'simplex'].includes(last.mode)) switchMode(last.mode);
+  if (last.mode && ['cours', 'projet', 'web', 'edt', 'virt', 'simplex', 'opl'].includes(last.mode)) switchMode(last.mode);
 }
 // =====================================================================
 // MODE COURS : documents PDF + détection automatique des exercices
@@ -29,6 +29,7 @@ function switchMode(mode) {
   el('modeEdtBtn').classList.toggle('active', mode === 'edt');
   el('modeVirtBtn').classList.toggle('active', mode === 'virt');
   el('modeSimplexBtn').classList.toggle('active', mode === 'simplex');
+  el('modeOplBtn').classList.toggle('active', mode === 'opl');
   el('modeWebBtn').classList.toggle('active', mode === 'web');
   el('codeContent').classList.toggle('hidden', mode !== 'code');
   el('coursContent').classList.toggle('hidden', mode !== 'cours');
@@ -36,6 +37,7 @@ function switchMode(mode) {
   el('edtContent').classList.toggle('hidden', mode !== 'edt');
   el('virtContent').classList.toggle('hidden', mode !== 'virt');
   el('simplexContent').classList.toggle('hidden', mode !== 'simplex');
+  el('oplContent').classList.toggle('hidden', mode !== 'opl');
   el('webContent').classList.toggle('hidden', mode !== 'web');
   if (mode === 'cours' && currentCourse) renderDocList();
   rememberState();
@@ -44,5 +46,6 @@ function switchMode(mode) {
   if (mode === 'web') WebDev.onShow();
   if (mode === 'virt') initVirtMode();
   if (mode === 'simplex') initSimplexMode();
+  if (mode === 'opl') initOplMode();
   updateIaContextChip();
 }

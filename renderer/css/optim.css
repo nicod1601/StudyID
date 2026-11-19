@@ -1,0 +1,56 @@
+/* Section OPL / CPLEX */
+#oplContent.content-wrapper { grid-template-columns: 240px 1fr; }
+.opl-side { display: flex; flex-direction: column; background: var(--bg-1); border-right: 1px solid var(--line); min-height: 0; }
+.opl-side-top { padding: 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+.opl-title { font-weight: 700; color: var(--text-hi); }
+.opl-side-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.opl-side-btns .btn-ghost { padding: 4px 9px; font-size: 12px; }
+.opl-side select, .opl-toolbar select { background: var(--bg-2); color: var(--text-hi); border: 1px solid var(--line); border-radius: var(--radius); padding: 5px 8px; max-width: 100%; }
+.opl-files { flex: 1; overflow: auto; padding: 6px; min-height: 0; }
+.opl-file { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); cursor: pointer; color: var(--text-mid); font-size: var(--fs-base); }
+.opl-file:hover { background: var(--bg-2); color: var(--text-hi); }
+.opl-file.active { background: var(--bg-3); color: var(--text-hi); box-shadow: inset 2px 0 0 var(--accent); }
+.opl-fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opl-fbtns { display: none; gap: 2px; }
+.opl-file:hover .opl-fbtns { display: inline-flex; }
+.opl-fbtns button { background: transparent; border: 0; color: var(--text-mid); cursor: pointer; padding: 0 4px; }
+.opl-fbtns button:hover { color: var(--text-hi); }
+.opl-dot { color: var(--run); font-size: 10px; }
+.opl-role { color: var(--accent); font-size: 10px; }
+.opl-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.opl-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.opl-toolbar label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-mid); font-size: 12px; }
+.opl-auto { cursor: pointer; }
+.opl-status { margin-left: auto; font-size: 12.5px; color: var(--text-mid); }
+.opl-status.ok { color: var(--run); font-weight: 600; }
+.opl-status.err { color: var(--danger); font-weight: 600; }
+.opl-tabs { display: flex; gap: 1px; background: var(--bg-1); border-bottom: 1px solid var(--line); overflow-x: auto; min-height: 34px; }
+.opl-tab { display: flex; align-items: center; gap: 8px; padding: 7px 12px; color: var(--text-mid); cursor: pointer; font-size: var(--fs-base); white-space: nowrap; border-bottom: 2px solid transparent; }
+.opl-tab:hover { color: var(--text-hi); }
+.opl-tab.active { color: var(--text-hi); border-bottom-color: var(--accent); background: var(--bg-2); }
+.opl-tab button { background: transparent; border: 0; color: var(--text-low); cursor: pointer; font-size: 15px; line-height: 1; }
+.opl-tab button:hover { color: var(--danger); }
+.opl-editor { flex: 1; min-height: 80px; position: relative; }
+.opl-editor .CodeMirror { height: 100%; font-family: var(--mono); font-size: 13.5px; }
+.opl-editor.empty::after { content: 'Ouvre un fichier .mod ou .dat, ou crée-en un à gauche.'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-low); background: var(--bg-0); z-index: 5; }
+.opl-err-line { background: rgba(229,88,79,0.22) !important; }
+.opl-results { position: relative; flex: none; display: flex; flex-direction: column; height: var(--term-h, 260px); border-top: 1px solid var(--line); background: var(--bg-1); }
+.opl-results.collapsed { height: 36px; }
+.opl-results.collapsed .opl-res-body { display: none; }
+.opl-res-head { display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line-soft); height: 36px; flex: none; }
+.opl-rtab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--text-mid); padding: 8px 12px; cursor: pointer; font-size: var(--fs-base); }
+.opl-rtab.active { color: var(--text-hi); border-bottom-color: var(--accent); }
+.opl-res-head .spacer { flex: 1; }
+.opl-res-head .btn-ghost { padding: 3px 8px; }
+#oplMaxBtn.active { color: var(--accent); }
+.opl-res-body { flex: 1; overflow: auto; padding: 10px 14px; min-height: 0; }
+.opl-console { margin: 0; font: 13px/1.6 var(--mono); color: var(--text-hi); white-space: pre-wrap; user-select: text; }
+.opl-err { color: var(--danger); line-height: 1.7; }
+.opl-obj { font-size: 15px; color: var(--text-mid); }
+.opl-obj b { font-size: 22px; color: var(--text-hi); margin-left: 6px; }
+.opl-meta { font-size: 12px; color: var(--text-low); margin: 4px 0 10px; }
+.opl-table { border-collapse: collapse; font: 13px var(--mono); }
+.opl-table th, .opl-table td { border: 1px solid var(--line); padding: 5px 12px; text-align: left; }
+.opl-table thead th { background: var(--bg-2); color: var(--text-mid); }
+.opl-table tbody th { color: var(--text-mid); font-weight: 600; }
+.opl-table tr.bind td, .opl-table tr.bind th { background: rgba(76,141,255,0.08); }

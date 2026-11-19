@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="css/project-tree.css" />
 <link rel="stylesheet" href="css/virtualisation.css" />
 <link rel="stylesheet" href="css/simplex.css" />
+<link rel="stylesheet" href="css/optim.css" />
 </head>
 <body>
   <div id="app">
@@ -58,6 +59,7 @@
         <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
         <button class="mode-btn" id="modeVirtBtn">🖥 Virtualisation</button>
         <button class="mode-btn" id="modeSimplexBtn">📐 Simplexe</button>
+        <button class="mode-btn" id="modeOplBtn">🧮 OPL / CPLEX</button>
       </div>
 
       <div class="quick-actions">
@@ -369,6 +371,47 @@
           <p class="edt-import-meta" id="edtImportMeta"></p>
         </div>
       </section>
+    </div>
+
+    <!-- ===================== MODE OPL / CPLEX ===================== -->
+    <div class="content-wrapper hidden" id="oplContent">
+      <aside class="opl-side">
+        <div class="opl-side-top">
+          <div class="opl-title">🧮 OPL / CPLEX</div>
+          <div class="opl-side-btns">
+            <button class="btn-ghost" id="oplNewModBtn" title="Nouveau modèle">＋ .mod</button>
+            <button class="btn-ghost" id="oplNewDatBtn" title="Nouveau fichier de données">＋ .dat</button>
+            <button class="btn-ghost" id="oplImportBtn" title="Importer des fichiers depuis l'ordinateur">📥 Importer</button>
+            <button class="btn-ghost" id="oplFolderBtn" title="Ouvrir le dossier des fichiers">📂</button>
+          </div>
+          <select id="oplExamples"></select>
+        </div>
+        <div class="opl-files" id="oplFiles"></div>
+      </aside>
+      <main class="opl-main">
+        <div class="opl-toolbar">
+          <button class="btn-run" id="oplRunBtn" title="Exécuter (F5 ou Ctrl+Entrée)">▶ Exécuter</button>
+          <label>Modèle <select id="oplModSel"></select></label>
+          <label>Données <select id="oplDatSel"></select></label>
+          <button class="btn-ghost" id="oplSaveBtn" disabled title="Enregistrer (Ctrl+S)">💾 Enregistrer</button>
+          <button class="btn-ghost" id="oplSaveAsBtn" disabled title="Enregistrer une copie ailleurs">Enregistrer sous…</button>
+          <label class="opl-auto" title="Enregistre le modèle et les données avant chaque exécution"><input type="checkbox" id="oplAutosave" checked /> Enregistrer avant d'exécuter</label>
+          <span class="opl-status" id="oplStatus"></span>
+        </div>
+        <div class="opl-tabs" id="oplTabs"></div>
+        <div class="opl-editor" id="oplEditorHost"></div>
+        <div class="opl-results" id="oplResults">
+          <div class="term-splitter" id="oplSplitter" title="Glisse pour redimensionner (double-clic : taille par défaut)"></div>
+          <div class="opl-res-head">
+            <button class="opl-rtab active" data-tab="console">Console</button>
+            <button class="opl-rtab" data-tab="solution">Solution</button>
+            <button class="opl-rtab" data-tab="constraints">Contraintes</button>
+            <span class="spacer"></span>
+            <button class="btn-ghost" id="oplMaxBtn" title="Agrandir au maximum">⤢</button>
+          </div>
+          <div class="opl-res-body" id="oplResBody"></div>
+        </div>
+      </main>
     </div>
 
     <!-- ===================== MODE SIMPLEXE ===================== -->
@@ -861,6 +904,8 @@
   <script src="js/features/virt/virt-detail.js"></script>
   <script src="js/features/simplex/engine.js"></script>
   <script src="js/features/simplex/simplex.js"></script>
+  <script src="js/features/optim/opl-engine.js"></script>
+  <script src="js/features/optim/opl.js"></script>
   <script src="js/features/search/search.js"></script>
   <script src="js/features/codepad/snippets.js"></script>
   <script src="js/features/codepad/codepad.js"></script>

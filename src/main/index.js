@@ -40,6 +40,7 @@ app.on('window-all-closed', () => {
   require('./ipc/system'),
   require('./ipc/docs'),
   require('./ipc/virt'),
+  require('./ipc/opl'),
 ].forEach((m) => m.register());
 
 // ---------- IPC : Terminal intégré + Développement Web ----------

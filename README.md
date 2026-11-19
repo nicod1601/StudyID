@@ -122,6 +122,17 @@ Pour s'entraîner à la méthode du simplexe (cours d'optimisation) :
 - **S'entraîner** : exercices générés à trois niveaux. Trois modes : répondre (vérification de z* et des x*), **pas à pas guidé** (tu choisis toi-même variable entrante et sortante à chaque tableau) et correction complète.
 - Code : `renderer/js/features/simplex/engine.js` (moteur sans DOM, testable avec Node).
 
+## 🧮 OPL / CPLEX (Ctrl+8)
+
+Éditeur de modèles **OPL** (le langage d'IBM ILOG CPLEX / OPL IDE) avec exécution intégrée :
+
+- Fichiers **.mod** (modèle) et **.dat** (données), créés, renommés, importés et **enregistrés** dans `~/StudyIDE/Optimisation` (Ctrl+S, « Enregistrer sous… » pour une copie ailleurs). F5 ou Ctrl+Entrée pour exécuter ; l'enregistrement avant exécution est automatique (désactivable).
+- Langage pris en charge : `dvar` (`int`, `int+`, `float`, `float+`, `boolean`, tableaux, bornes `in a..b`), `range`, ensembles `{string}`, données scalaires et tableaux (dans le .mod ou avec `...` dans le .dat), `maximize` / `minimize`, `subject to { … }` avec étiquettes, `forall`, `sum`, contraintes chaînées `a <= expr <= b`, et blocs `execute` (`writeln`, `var`, `for`, `if`, `while`, `cplex.getObjValue()`).
+- Résolution exacte (fractions) : simplexe + **branch & bound** pour les variables entières et binaires.
+- Résultats : console au format OPL, valeurs des variables, contraintes avec marges et **prix duaux** (modèles sans variable entière).
+- Non pris en charge pour l'instant : tuples, `setof`, modèles non linéaires, CP Optimizer, scripts `main { }`.
+- Code : `renderer/js/features/optim/` (moteur sans DOM, testable avec Node) et `src/main/ipc/opl.js`.
+
 ## 🏗 Architecture du code
 
 ```

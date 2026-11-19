@@ -124,7 +124,8 @@
   }
 
   // ---------------------------------------------------------------- Simplexe (tableaux)
-  function solve(prob) {
+  function solve(prob, opts = {}) {
+    const record = opts.record !== false;
     const n = prob.vars.length;
     const sgn = prob.type === 'max' ? ONE : ONE.neg();
     // on se ramène toujours à un max : min f = - max(-f)
@@ -176,6 +177,7 @@
     const zValue = (cost) => basis.reduce((acc, bj, i) => acc.add(cost[bj].mul(b[i])), ZERO);
 
     function snapshot(phase, cost, active, pivot, note) {
+      if (!record) return;
       const d = deltas(cost, active);
       const cols = []; names.forEach((_, j) => { if (active[j]) cols.push(j); });
       steps.push({
