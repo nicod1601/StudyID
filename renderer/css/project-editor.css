@@ -119,3 +119,11 @@ body.is-resizing-v, body.is-resizing-v * { cursor: ns-resize !important; user-se
 .CodeMirror-simplescroll-vertical div:hover, .CodeMirror-simplescroll-horizontal div:hover { background: #8d9bff; background-clip: padding-box; }
 .CodeMirror-simplescroll-vertical div:active, .CodeMirror-simplescroll-horizontal div:active { background: #b3bcff; background-clip: padding-box; cursor: grabbing; }
 .project-cm .CodeMirror-scrollbar-filler, .project-cm .CodeMirror-gutter-filler { background: rgba(255, 255, 255, 0.05); }
+
+/* Terminal agrandi au maximum / poignée de redimensionnement */
+.term-maximized { transition: none; }
+.term-maximized .term-splitter { display: none; }
+#maxTerminalBtn.active, #virtMaxTermBtn.active, #webMaxBottomBtn.active { color: var(--accent); }
+body.is-resizing-v .term-host, body.is-resizing-v webview { pointer-events: none; }
+.term-splitter { height: 10px; top: -5px; }
+.resizing, .resizing.web-bottom { transition: none !important; }

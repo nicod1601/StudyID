@@ -56,7 +56,6 @@
         <button class="mode-btn" id="modeWebBtn">🌐 Web</button>
         <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
         <button class="mode-btn" id="modeVirtBtn">🖥 Virtualisation</button>
-        <button class="mode-btn" id="modeDiscordBtn">🎮 Discord</button>
       </div>
 
       <div class="quick-actions">
@@ -195,6 +194,7 @@
               <button class="btn-run" id="runActiveFileBtn" disabled>▶ Exécuter le fichier</button>
               <button class="btn-ghost" id="newTerminalBtn" title="Nouveau terminal">＋</button>
               <button class="btn-ghost" id="restartTerminalBtn" title="Redémarrer le terminal actif">⟳</button>
+              <button class="btn-ghost" id="maxTerminalBtn" title="Agrandir au maximum">⤢</button>
               <button class="btn-ghost" id="toggleTerminalBtn" title="Replier/déplier">▾</button>
             </div>
           </div>
@@ -269,6 +269,7 @@
           </div>
         </div>
         <div class="web-bottom" id="webBottom">
+          <div class="term-splitter" id="webBottomSplitter" title="Glisse pour redimensionner (double-clic : taille par défaut)"></div>
           <div class="web-bottom-tabs">
             <button class="web-btab active" data-pane="server">📡 Serveur</button>
             <button class="web-btab" data-pane="task">📦 Tâches npm</button>
@@ -278,6 +279,7 @@
             <button class="btn-ghost" id="webCodePadBtn" title="Code rapide : snippets web (Ctrl+Maj+K)">⚡</button>
             <button class="btn-ghost" id="webNewTermBtn" title="Nouveau terminal">＋</button>
             <button class="btn-ghost" id="webClearLogsBtn" title="Effacer l’affichage">🧹</button>
+            <button class="btn-ghost" id="webMaxBottomBtn" title="Agrandir au maximum">⤢</button>
             <button class="btn-ghost" id="webToggleBottomBtn" title="Replier/déplier">▾</button>
           </div>
           <div class="web-bottom-body">
@@ -385,10 +387,12 @@
         <main class="virt-main">
           <div class="virt-detail" id="virtDetail"></div>
           <div class="project-terminal-panel virt-terminal" id="virtTerminalPanel">
+            <div class="term-splitter" id="virtTermSplitter" title="Glisse pour redimensionner (double-clic : taille par défaut)"></div>
             <div class="terminal-header">
               <div class="terminal-tabs" id="virtTermTabs"></div>
               <div class="actions">
                 <button class="btn-ghost" id="virtNewTermBtn" title="Nouveau terminal">＋</button>
+                <button class="btn-ghost" id="virtMaxTermBtn" title="Agrandir au maximum">⤢</button>
                 <button class="btn-ghost" id="virtToggleTermBtn" title="Replier/déplier">▾</button>
               </div>
             </div>
@@ -396,21 +400,6 @@
           </div>
         </main>
       </div>
-    </div>
-
-    <!-- ===================== MODE DISCORD ===================== -->
-    <div class="content-wrapper edt-wrapper hidden" id="discordContent">
-      <section class="edt-area">
-        <div class="edt-toolbar">
-          <div class="edt-title">🎮 Discord</div>
-          <div class="actions">
-            <button class="btn-ghost" id="discordRefreshBtn" title="Actualiser">🔄 Actualiser</button>
-            <button class="btn-ghost" id="discordOpenBrowserBtn" title="Ouvrir dans le navigateur">🌐 Navigateur</button>
-          </div>
-        </div>
-
-        <webview id="discordWebview" src="https://discord.com/app" allowpopups partition="persist:discord"></webview>
-      </section>
     </div>
 
     </div>
@@ -836,7 +825,6 @@
   <script src="js/features/app-settings.js"></script>
   <script src="js/features/chat-lan.js"></script>
   <script src="js/features/edt.js"></script>
-  <script src="js/features/discord.js"></script>
   <script src="js/features/virt/commands.js"></script>
   <script src="js/features/virt/virt.js"></script>
   <script src="js/features/virt/virt-detail.js"></script>

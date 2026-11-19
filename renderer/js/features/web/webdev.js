@@ -115,6 +115,16 @@
       if (Links) term.loadAddon(new Links((e, uri) => openLink(uri, this.onLocalLink)));
       term.open(el);
       enableWebgl(term);
+      // Ctrl + molette : taille du texte (mémorisée)
+      try { const f = Number(localStorage.getItem('studyide.termFont')); if (f >= 8 && f <= 30) term.options.fontSize = f; } catch (e) { /* ignoré */ }
+      el.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        const f = Math.max(8, Math.min(30, (term.options.fontSize || 12.5) + (e.deltaY < 0 ? 1 : -1)));
+        this.tabs.forEach((t) => { t.term.options.fontSize = f; });
+        try { localStorage.setItem('studyide.termFont', String(f)); } catch (err) { /* ignoré */ }
+        this.fitActive();
+      }, { passive: false });
 
       const tab = {
         key, el, term, fit, id: null, mode: 'pty', alive: false, line: '',
@@ -796,6 +806,8 @@
     document.querySelectorAll('#webDeviceSwitch button').forEach((b) => { b.onclick = () => setDevice(b.dataset.device); });
 
     document.querySelectorAll('.web-btab').forEach((b) => { b.onclick = () => switchPane(b.dataset.pane); });
+    EditorNav.initSplitter($('webBottom'), $('webBottomSplitter'), 'webBottomHeight');
+    $('webMaxBottomBtn').onclick = () => { EditorNav.toggleMaximize($('webBottom'), $('webMaxBottomBtn')); setTimeout(() => { serverLog.fit(); taskLog.fit(); webTerms.fitActive(); }, 60); };
     $('webToggleBottomBtn').onclick = () => { $('webBottom').classList.toggle('collapsed'); setTimeout(() => { serverLog.fit(); taskLog.fit(); webTerms.fitActive(); }, 180); };
     $('webNewTermBtn').onclick = () => { switchPane('terminal'); webTerms.newTab(root ? root.path : ''); };
     $('webClearLogsBtn').onclick = () => {

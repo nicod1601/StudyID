@@ -55,6 +55,7 @@ async function initProjectMode() {
       body: el('projectEditorBody'), crumb: el('projectBreadcrumb'), status: el('projectStatusBar')
     });
     EditorNav.initSplitter(el('projectTerminalPanel'), el('projectTermSplitter'));
+    el('maxTerminalBtn').onclick = () => EditorNav.toggleMaximize(el('projectTerminalPanel'), el('maxTerminalBtn'));
     el('projectTabbar').addEventListener('wheel', (e) => { // molette = défilement horizontal des onglets
       if (e.deltaY && !e.deltaX) { e.preventDefault(); e.currentTarget.scrollLeft += e.deltaY; }
     }, { passive: false });

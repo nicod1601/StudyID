@@ -127,8 +127,7 @@
 
 .edt-import-meta { margin-top: 16px; font-size: 11px; color: var(--text-low); }
 
-#edtWebview,
-#discordWebview {
+#edtWebview {
   flex: 1;
   width: 100%;
   min-height: 0;

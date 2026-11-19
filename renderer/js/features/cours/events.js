@@ -6,7 +6,6 @@ function bindCoursEvents() {
   el('modeProjetBtn').onclick = () => switchMode('projet');
   el('modeVirtBtn').onclick = () => switchMode('virt');
   el('modeEdtBtn').onclick = () => switchMode('edt');
-  el('modeDiscordBtn').onclick = () => switchMode('discord');
   el('modeWebBtn').onclick = () => switchMode('web');
 
   el('importPdfBtn').onclick = async () => {

@@ -169,6 +169,8 @@ function bindVirtEvents() {
     renderVirtDetail();
   });
 
+  EditorNav.initSplitter(el('virtTerminalPanel'), el('virtTermSplitter'), 'virtTermHeight');
+  el('virtMaxTermBtn').onclick = () => EditorNav.toggleMaximize(el('virtTerminalPanel'), el('virtMaxTermBtn'));
   el('virtNewTermBtn').onclick = () => { el('virtTerminalPanel').classList.remove('collapsed'); virt.terms.newTab(''); };
   el('virtToggleTermBtn').onclick = () => el('virtTerminalPanel').classList.toggle('collapsed');
 

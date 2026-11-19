@@ -159,7 +159,7 @@ li.CodeMirror-hint-active { background: var(--accent-dim); color: var(--accent-h
 @keyframes web-load { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .web-webview { width: 100%; height: 100%; display: flex; border: 0; }
 
-.web-bottom { display: flex; flex-direction: column; height: 300px; flex-shrink: 0; border-top: 1px solid var(--line); background: #06070b; transition: height 0.15s var(--ease); }
+.web-bottom { position: relative; display: flex; flex-direction: column; height: var(--term-h, 300px); flex-shrink: 0; border-top: 1px solid var(--line); background: #06070b; transition: height 0.15s var(--ease); }
 .web-bottom.collapsed { height: 38px; }
 .web-bottom.collapsed .web-bottom-body { display: none; }
 .web-bottom.collapsed #webToggleBottomBtn { transform: rotate(180deg); }

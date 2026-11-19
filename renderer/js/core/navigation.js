@@ -1,8 +1,8 @@
 // Navigation entre les sections, raccourcis clavier globaux, restauration du dernier état.
 
-// Raccourcis : Ctrl+1…7 pour changer de section (Ctrl+K = recherche, voir search.js)
+// Raccourcis : Ctrl+1…6 pour changer de section (Ctrl+K = recherche, voir search.js)
 function bindGlobalShortcuts() {
-  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'virt', 'discord'];
+  const modes = ['code', 'cours', 'projet', 'web', 'edt', 'virt'];
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
     const n = Number(e.key);
@@ -27,14 +27,12 @@ function switchMode(mode) {
   el('modeCoursBtn').classList.toggle('active', mode === 'cours');
   el('modeProjetBtn').classList.toggle('active', mode === 'projet');
   el('modeEdtBtn').classList.toggle('active', mode === 'edt');
-  el('modeDiscordBtn').classList.toggle('active', mode === 'discord');
   el('modeVirtBtn').classList.toggle('active', mode === 'virt');
   el('modeWebBtn').classList.toggle('active', mode === 'web');
   el('codeContent').classList.toggle('hidden', mode !== 'code');
   el('coursContent').classList.toggle('hidden', mode !== 'cours');
   el('projetContent').classList.toggle('hidden', mode !== 'projet');
   el('edtContent').classList.toggle('hidden', mode !== 'edt');
-  el('discordContent').classList.toggle('hidden', mode !== 'discord');
   el('virtContent').classList.toggle('hidden', mode !== 'virt');
   el('webContent').classList.toggle('hidden', mode !== 'web');
   if (mode === 'cours' && currentCourse) renderDocList();

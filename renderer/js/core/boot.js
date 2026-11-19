@@ -43,7 +43,6 @@ async function init() {
   bindAppSettingsEvents();
   bindChatBubbleEvents();
   bindEdtEvents();
-  bindDiscordEvents();
   bindEdtRemindersEvents();
   bindEditorSettingsEvents();
   bindFullscreenEvents();

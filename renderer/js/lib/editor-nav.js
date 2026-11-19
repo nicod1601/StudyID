@@ -532,8 +532,8 @@
   // ===================================================================
   // 5. SÉPARATEUR ÉDITEUR / TERMINAL
   // ===================================================================
-  function initSplitter(panel, handle) {
-    const saved = Number(prefs.get('termHeight', 0));
+  function initSplitter(panel, handle, key = 'termHeight') {
+    const saved = Number(prefs.get(key, 0));
     if (saved) panel.style.setProperty('--term-h', saved + 'px');
     handle.addEventListener('mousedown', (e) => {
       if (panel.classList.contains('collapsed')) return;
@@ -552,19 +552,40 @@
         document.removeEventListener('mouseup', up);
         panel.classList.remove('resizing');
         document.body.classList.remove('is-resizing-v');
-        prefs.set('termHeight', panel.offsetHeight);
+        prefs.set(key, panel.offsetHeight);
       };
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
     });
     handle.addEventListener('dblclick', () => { // double-clic : taille par défaut
       panel.style.removeProperty('--term-h');
-      prefs.set('termHeight', 0);
+      prefs.set(key, 0);
     });
+  }
+
+  // Agrandit le panneau au maximum de son conteneur, ou le remet à sa taille précédente
+  function toggleMaximize(panel, btn) {
+    const on = !panel.classList.contains('term-maximized');
+    if (on) {
+      panel.dataset.prevH = panel.style.getPropertyValue('--term-h');
+      panel.style.setProperty('--term-h', Math.max(160, panel.parentElement.clientHeight - 42) + 'px');
+    } else if (panel.dataset.prevH) panel.style.setProperty('--term-h', panel.dataset.prevH);
+    else panel.style.removeProperty('--term-h');
+    panel.classList.toggle('term-maximized', on);
+    panel.classList.remove('collapsed');
+    if (on && !toggleMaximize.esc) {
+      toggleMaximize.esc = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const p = document.querySelector('.term-maximized');
+        if (p) toggleMaximize(p, p.querySelector('[id$="MaxTermBtn"], #maxTerminalBtn, #webMaxBottomBtn'));
+      });
+    }
+    if (btn) { btn.classList.toggle('active', on); btn.title = on ? 'Réduire (Échap)' : 'Agrandir au maximum'; }
   }
 
   root.EditorNav = Object.assign({
     attach: (cm, els) => new EditorNav(cm, els),
-    initSplitter
+    initSplitter, toggleMaximize
   }, api);
 })(typeof window !== 'undefined' ? window : globalThis);

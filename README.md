@@ -104,7 +104,7 @@ Après avoir récupéré cette version : `npm install` (le script `postinstall` 
 - **Fichiers** : les binaires (images, archives, bases SQLite) et les fichiers > 8 Mo ne sont plus chargés dans l'éditeur ; au-delà de 1 Mo ou avec une ligne géante (bundle minifié), la coloration est désactivée pour rester fluide.
 - **Laravel** : fichiers `.blade.php` (HTML + PHP), icônes `artisan` / `composer.json`, `vendor` grisé comme `node_modules`.
 
-## 🖥 Virtualisation (Ctrl+7)
+## 🖥 Virtualisation (Ctrl+6)
 
 Détecte automatiquement les hyperviseurs installés et liste leurs machines : **VirtualBox, VMware (Workstation/Player/Fusion), Hyper-V, QEMU/KVM (libvirt), WSL, Docker et Multipass**.
 
