@@ -5,6 +5,7 @@ function bindCoursEvents() {
   el('modeCoursBtn').onclick = () => switchMode('cours');
   el('modeProjetBtn').onclick = () => switchMode('projet');
   el('modeVirtBtn').onclick = () => switchMode('virt');
+  el('modeSimplexBtn').onclick = () => switchMode('simplex');
   el('modeEdtBtn').onclick = () => switchMode('edt');
   el('modeWebBtn').onclick = () => switchMode('web');
 

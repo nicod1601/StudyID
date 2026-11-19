@@ -114,6 +114,14 @@ Détecte automatiquement les hyperviseurs installés et liste leurs machines : *
 - Hyper-V demande de lancer StudyIDE en administrateur. Actualisation auto optionnelle (10 s).
 - Code : `src/main/virt/` (un fichier par hyperviseur) et `renderer/js/features/virt/`.
 
+## 📐 Simplexe (Ctrl+7)
+
+Pour s'entraîner à la méthode du simplexe (cours d'optimisation) :
+
+- **Résoudre** : tape un programme linéaire (`max 3x1 + 2x2` puis une contrainte par ligne, `<=`, `>=` ou `=`) et obtiens la forme standard puis chaque tableau, avec colonne entrante, rapports b/a, ligne sortante et pivot. Calculs en **fractions exactes**. Gère la méthode des deux phases, les égalités, les problèmes impossibles, non bornés, l'optimum multiple et la dégénérescence.
+- **S'entraîner** : exercices générés à trois niveaux. Trois modes : répondre (vérification de z* et des x*), **pas à pas guidé** (tu choisis toi-même variable entrante et sortante à chaque tableau) et correction complète.
+- Code : `renderer/js/features/simplex/engine.js` (moteur sans DOM, testable avec Node).
+
 ## 🏗 Architecture du code
 
 ```

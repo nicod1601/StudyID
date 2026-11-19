@@ -30,6 +30,7 @@
 <link rel="stylesheet" href="css/codepad.css" />
 <link rel="stylesheet" href="css/project-tree.css" />
 <link rel="stylesheet" href="css/virtualisation.css" />
+<link rel="stylesheet" href="css/simplex.css" />
 </head>
 <body>
   <div id="app">
@@ -56,6 +57,7 @@
         <button class="mode-btn" id="modeWebBtn">🌐 Web</button>
         <button class="mode-btn" id="modeEdtBtn">🗓 EDT</button>
         <button class="mode-btn" id="modeVirtBtn">🖥 Virtualisation</button>
+        <button class="mode-btn" id="modeSimplexBtn">📐 Simplexe</button>
       </div>
 
       <div class="quick-actions">
@@ -367,6 +369,35 @@
           <p class="edt-import-meta" id="edtImportMeta"></p>
         </div>
       </section>
+    </div>
+
+    <!-- ===================== MODE SIMPLEXE ===================== -->
+    <div class="content-wrapper hidden" id="simplexContent">
+      <div class="sx-layout">
+        <div class="sx-top">
+          <span class="sx-title">📐 Simplexe</span>
+          <button class="sx-tab active" data-tab="solve">Résoudre</button>
+          <button class="sx-tab" data-tab="train">S'entraîner</button>
+        </div>
+        <div class="sx-pane" id="sxPaneSolve">
+          <div class="sx-cols">
+            <div class="sx-editor">
+              <textarea id="sxInput" spellcheck="false" placeholder="max 3x1 + 2x2&#10;2x1 + x2 <= 18"></textarea>
+              <div class="sx-actions">
+                <button class="btn-run" id="sxSolveBtn" title="Ctrl+Entrée">▶ Résoudre</button>
+                <button class="btn-ghost" id="sxClearBtn">Effacer</button>
+                <select id="sxExamples"></select>
+              </div>
+              <div class="sx-syntax">1<sup>re</sup> ligne : <code>max</code> ou <code>min</code> suivi de la fonction. Puis une contrainte par ligne avec <code>&lt;=</code>, <code>&gt;=</code> ou <code>=</code>. Fractions et décimaux acceptés (<code>1/2x1</code>, <code>0.5x1</code>). Toutes les variables sont ≥ 0.</div>
+            </div>
+            <div id="sxOut"></div>
+          </div>
+        </div>
+        <div class="sx-pane hidden" id="sxPaneTrain">
+          <div class="sx-toolbar"><select id="sxLevel"></select><button class="btn-run" id="sxNewBtn">🎲 Nouvel exercice</button></div>
+          <div id="sxTrain"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ===================== MODE VIRTUALISATION ===================== -->
@@ -828,6 +859,8 @@
   <script src="js/features/virt/commands.js"></script>
   <script src="js/features/virt/virt.js"></script>
   <script src="js/features/virt/virt-detail.js"></script>
+  <script src="js/features/simplex/engine.js"></script>
+  <script src="js/features/simplex/simplex.js"></script>
   <script src="js/features/search/search.js"></script>
   <script src="js/features/codepad/snippets.js"></script>
   <script src="js/features/codepad/codepad.js"></script>
