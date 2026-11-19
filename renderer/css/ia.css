@@ -9,22 +9,17 @@
   border-radius: 50%;
   border: none;
   background: var(--accent-grad);
-  color: #04141c;
+  color: #fff;
   font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 0 0 rgba(79,227,255,0.4);
+  box-shadow: var(--shadow-md);
   z-index: 200;
   transition: transform 0.15s var(--ease), box-shadow 0.3s var(--ease);
-  animation: ia-breathe 4s ease-in-out infinite;
 }
-@keyframes ia-breathe {
-  0%, 100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(79,227,255,0.3); }
-  50% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 8px rgba(79,227,255,0); }
-}
-.ia-bubble-btn:hover { transform: scale(1.08); animation-play-state: paused; }
+.ia-bubble-btn:hover { filter: brightness(1.1); }
 .ia-bubble-btn.active {
   background: var(--bg-3);
   color: var(--accent);
@@ -50,7 +45,7 @@
   height: 100vh;
   width: 440px;
   max-width: 92vw;
-  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  background: var(--bg-1);
   border-left: 1px solid var(--line);
   box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5);
   z-index: 190;
@@ -92,7 +87,7 @@
   margin: 10px 16px 0;
   padding: 8px 12px;
   background: var(--bg-2);
-  border: 1px solid rgba(79,227,255,0.3);
+  border: 1px solid rgba(76,141,255,0.3);
   border-radius: var(--radius);
   font-size: 11.5px;
   color: var(--accent);
@@ -104,7 +99,7 @@
   font-size: 12.5px;
   font-weight: 600;
   color: var(--accent);
-  background: linear-gradient(120deg, rgba(79,227,255,0.08), rgba(124,140,255,0.05));
+  background: rgba(76,141,255,0.08);
   border-bottom: 1px solid var(--line);
 }
 .ia-status {
@@ -171,7 +166,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.ia-msg.user .ia-bubble { background: linear-gradient(135deg, rgba(79,227,255,0.22), rgba(124,140,255,0.18)); color: #eafcff; border-bottom-right-radius: 4px; border: 1px solid rgba(79,227,255,0.25); }
+.ia-msg.user .ia-bubble { background: rgba(76,141,255,0.22); color: var(--text-hi); border-bottom-right-radius: 4px; border: 1px solid rgba(76,141,255,0.25); }
 .ia-msg.assistant .ia-bubble { background: var(--bg-2); border: 1px solid var(--line); color: var(--text-hi); border-bottom-left-radius: 4px; }
 .ia-bubble code { font-family: var(--mono); background: var(--bg-3); padding: 1px 4px; border-radius: 4px; }
 .ia-bubble pre { background: var(--bg-0); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; font-family: var(--mono); font-size: 11.5px; }
@@ -182,7 +177,7 @@
   font-size: 11px;
   background: var(--bg-3);
   color: var(--accent);
-  border: 1px solid rgba(79,227,255,0.3);
+  border: 1px solid rgba(76,141,255,0.3);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.15s var(--ease);
@@ -309,5 +304,5 @@
   color: var(--text-hi);
   cursor: pointer;
 }
-.mo-download-btn { background: var(--accent-grad); color: #04141c; border: none; font-weight: 700; }
+.mo-download-btn { background: var(--accent-grad); color: #fff; border: none; font-weight: 700; }
 .mo-delete-btn:hover { color: var(--danger); }

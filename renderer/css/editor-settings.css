@@ -56,7 +56,7 @@
   outline: none;
   transition: border-color 0.15s var(--ease);
 }
-.notes-search-row input:focus { border-color: rgba(79,227,255,0.4); }
+.notes-search-row input:focus { border-color: rgba(76,141,255,0.4); }
 
 .notes-list { flex: 1; overflow-y: auto; padding: 10px 12px; }
 .note-card {

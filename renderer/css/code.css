@@ -11,7 +11,7 @@
 .panel-header {
   padding: 16px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(124,140,255,0.03), transparent);
+  background: transparent;
 }
 .panel-header h2 {
   margin: 0 0 10px 0;
@@ -26,16 +26,16 @@
   width: 100%;
   padding: 10px;
   background: var(--accent-grad);
-  color: #04141c;
+  color: #fff;
   border: none;
   border-radius: var(--radius);
   font-weight: 700;
   font-size: 12px;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(79,227,255,0.18);
+  box-shadow: var(--shadow-sm);
   transition: filter 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
 }
-.btn-primary:hover { filter: brightness(1.08); box-shadow: 0 8px 22px rgba(79,227,255,0.28); }
+.btn-primary:hover { filter: brightness(1.1); }
 .btn-primary:active { transform: scale(0.98); }
 
 .exercise-list {
@@ -64,8 +64,8 @@
 .exercise-card[data-status="todo"]::before { background: var(--violet); opacity: 0.6; }
 .exercise-card[data-status="in-progress"]::before { background: var(--run); }
 .exercise-card[data-status="done"]::before { background: var(--accent-grad); }
-.exercise-card:hover { border-color: rgba(79,227,255,0.3); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-.exercise-card.selected { border-color: rgba(79,227,255,0.4); background: var(--bg-2); box-shadow: var(--glow-accent); }
+.exercise-card:hover { border-color: rgba(76,141,255,0.3);  box-shadow: var(--shadow-sm); }
+.exercise-card.selected { border-color: rgba(76,141,255,0.4); background: var(--bg-2); box-shadow: var(--glow-accent); }
 .exercise-card .name {
   font-size: 13px;
   font-weight: 600;
@@ -144,7 +144,7 @@
   transition: filter 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
 }
 .btn-run {
-  background: linear-gradient(150deg, var(--run), #e8823f);
+  background: var(--run);
   border-color: var(--run);
   color: #221302;
   font-weight: 700;
@@ -152,7 +152,7 @@
 }
 .btn-run:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 8px 20px rgba(255,171,92,0.28); }
 .btn-run:active:not(:disabled) { transform: scale(0.98); }
-.btn-save:hover:not(:disabled) { border-color: rgba(79,227,255,0.35); }
+.btn-save:hover:not(:disabled) { border-color: rgba(76,141,255,0.35); }
 .btn-run:disabled, .btn-save:disabled, .status-select:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-ghost { background: transparent; color: var(--text-low); }
 .btn-ghost:hover { color: var(--text-hi); border-color: var(--bg-4); }

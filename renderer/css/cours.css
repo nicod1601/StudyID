@@ -8,8 +8,8 @@
   cursor: pointer;
   transition: border-color 0.15s var(--ease), background 0.15s var(--ease), transform 0.12s var(--ease);
 }
-.doc-card:hover { border-color: rgba(79,227,255,0.3); transform: translateY(-1px); }
-.doc-card.selected { border-color: rgba(79,227,255,0.4); background: var(--bg-2); box-shadow: var(--glow-accent); }
+.doc-card:hover { border-color: rgba(76,141,255,0.3);  }
+.doc-card.selected { border-color: rgba(76,141,255,0.4); background: var(--bg-2); box-shadow: var(--glow-accent); }
 .doc-card .name { font-size: 13px; font-weight: 600; color: var(--text-hi); margin-bottom: 4px; overflow-wrap: anywhere; }
 .doc-card .meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-low); }
 
@@ -96,7 +96,7 @@
   font-size: 12.5px;
   transition: border-color 0.15s var(--ease), transform 0.12s var(--ease);
 }
-.pdf-ex-item:hover { border-color: rgba(79,227,255,0.3); transform: translateY(-1px); }
+.pdf-ex-item:hover { border-color: rgba(76,141,255,0.3);  }
 .pdf-ex-item .num { color: var(--accent); font-family: var(--mono); font-size: 11px; }
 .pdf-ex-item .title { color: var(--text-hi); margin-top: 3px; overflow-wrap: anywhere; }
 .pdf-ex-item .meta-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
@@ -162,4 +162,4 @@
   outline: none;
   transition: border-color 0.15s var(--ease);
 }
-#pdfExUserNotes:focus { border-color: rgba(79,227,255,0.4); }
+#pdfExUserNotes:focus { border-color: rgba(76,141,255,0.4); }

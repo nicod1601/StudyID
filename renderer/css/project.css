@@ -112,7 +112,7 @@
 .project-tab .pt-dirty {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); flex-shrink: 0;
-  box-shadow: 0 0 6px rgba(79,227,255,0.6);
+  box-shadow: 0 0 6px rgba(76,141,255,0.6);
 }
 .project-tab .pt-close {
   background: none; border: none; color: var(--text-low); cursor: pointer;

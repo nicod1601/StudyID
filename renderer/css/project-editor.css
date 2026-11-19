@@ -16,14 +16,14 @@
   background: #5b6488; border: 3px solid transparent; background-clip: padding-box; border-radius: 8px; min-height: 48px; min-width: 48px;
 }
 .CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
-.CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover { background: #7c8cff; background-clip: padding-box; }
+.CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover { background: #4c8dff; background-clip: padding-box; }
 .CodeMirror-vscrollbar::-webkit-scrollbar-thumb:active,
 .CodeMirror-hscrollbar::-webkit-scrollbar-thumb:active { background: #a0acff; background-clip: padding-box; }
 .CodeMirror-vscrollbar::-webkit-scrollbar-corner,
 .CodeMirror-hscrollbar::-webkit-scrollbar-corner { background: transparent; }
 .CodeMirror-scrollbar-filler, .CodeMirror-gutter-filler { background: #21222c; }
 /* Repères sur la barre de défilement (occurrences de la sélection, résultats de recherche) */
-.CodeMirror-selection-highlight-scrollbar { background: #7c8cff; border-radius: 2px; }
+.CodeMirror-selection-highlight-scrollbar { background: #4c8dff; border-radius: 2px; }
 .CodeMirror-search-match { background: #ffd479; border-color: #ffb86c; }
 .cm-matchhighlight { background: rgba(124, 140, 255, 0.24); border-radius: 2px; }
 .CodeMirror-focused .cm-matchhighlight { background: rgba(124, 140, 255, 0.32); }

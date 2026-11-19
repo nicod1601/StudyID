@@ -10,12 +10,12 @@
 .modal-overlay.open { display: flex; animation: modal-fade 0.18s var(--ease); }
 @keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
 .modal {
-  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 22px;
   width: 340px;
-  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(79,227,255,0.04);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(76,141,255,0.04);
 }
 .modal h3 { margin: 0 0 14px 0; font-size: 15px; font-weight: 700; }
 .modal label { display: block; font-size: 11px; color: var(--text-low); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -30,7 +30,7 @@
   outline: none;
   transition: border-color 0.15s var(--ease);
 }
-.modal input:focus { border-color: rgba(79,227,255,0.45); }
+.modal input:focus { border-color: rgba(76,141,255,0.45); }
 .lang-choice { display: flex; gap: 8px; }
 .lang-btn {
   flex: 1;
