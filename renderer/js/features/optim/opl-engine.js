@@ -387,6 +387,7 @@
       this.expect('}');
       return { k: 'execute', body, line };
     }
+    endStmt() { if (this.accept(';') || this.isOp('}')) return; this.expect(';'); }
     parseStmt() {
       const t = this.tok;
       if (this.accept(';')) return { s: 'nop' };
@@ -398,8 +399,9 @@
         if (t.v === 'var' || TYPES.includes(t.v)) {
           this.p++; const name = this.ident(); let e = null;
           if (this.accept('=')) e = this.parseOr();
-          this.expect(';'); return { s: 'var', name, e, line: t.line };
+          this.endStmt(); return { s: 'var', name, e, line: t.line };
         }
+        if (t.v === 'break' || t.v === 'continue') { this.p++; this.endStmt(); return { s: t.v }; }
         if (t.v === 'if') {
           this.p++; this.expect('('); const c = this.parseOr(); this.expect(')');
           const th = this.parseStmt(); let el = null;
@@ -424,7 +426,7 @@
           return { s: 'for', name, init, cond, inc, body: this.parseStmt(), line: t.line };
         }
       }
-      const st = this.parseSimple(); this.expect(';');
+      const st = this.parseSimple(); this.endStmt();
       return st;
     }
     // affectation, i++, ou appel de fonction
@@ -645,36 +647,54 @@
     }
 
     // ----- blocs execute
+    // Renvoie 'break' ou 'continue' quand l'instruction doit interrompre la boucle englobante
     exec(stmts, env, out) {
-      for (const st of stmts) this.stmt(st, env, out);
+      for (const st of stmts) { const sig = this.stmt(st, env, out); if (sig) return sig; }
+      return null;
     }
     stmt(st, env, out) {
       switch (st.s) {
-        case 'nop': return;
-        case 'block': this.exec(st.body, new Env(env), out); return;
-        case 'var': env.def(st.name, st.e ? this.ev(st.e, env) : Lin.c(0)); return;
+        case 'nop': return null;
+        case 'break': case 'continue': return st.s;
+        case 'block': return this.exec(st.body, new Env(env), out);
+        case 'var': env.def(st.name, st.e ? this.ev(st.e, env) : Lin.c(0)); return null;
         case 'expr': {
           const e = st.e;
           if (e.t === 'call' && (e.name === 'writeln' || e.name === 'write')) {
             const text = e.args.map((a) => show(this.ev(a, env))).join('');
             if (e.name === 'writeln') { out.cur += text; out.lines.push(out.cur); out.cur = ''; } else out.cur += text;
-            return;
+            return null;
           }
-          this.ev(e, env); return;
+          this.ev(e, env); return null;
         }
-        case 'assign': this.assign(st, env); return;
-        case 'if': if (this.ev(st.c, env)) this.stmt(st.th, env, out); else if (st.el) this.stmt(st.el, env, out); return;
-        case 'while': { let g = 0; while (this.ev(st.c, env)) { this.stmt(st.body, env, out); if (++g > 1e6) throw this.err('Boucle while trop longue.', st); } return; }
+        case 'assign': this.assign(st, env); return null;
+        case 'if': return this.ev(st.c, env) ? this.stmt(st.th, env, out) : (st.el ? this.stmt(st.el, env, out) : null);
+        case 'while': {
+          let g = 0;
+          while (this.ev(st.c, env)) {
+            const sig = this.stmt(st.body, env, out);
+            if (sig === 'break') break;
+            if (++g > 1e6) throw this.err('Boucle while trop longue.', st);
+          }
+          return null;
+        }
         case 'forin': {
           const items = this.items(this.ev(st.set, env), st.set);
-          for (const it of items) { const e = new Env(env); e.def(st.name, typeof it === 'string' ? it : Lin.c(it)); this.stmt(st.body, e, out); }
-          return;
+          for (const it of items) {
+            const e = new Env(env); e.def(st.name, typeof it === 'string' ? it : Lin.c(it));
+            if (this.stmt(st.body, e, out) === 'break') break;
+          }
+          return null;
         }
         case 'for': {
           const e = new Env(env); e.def(st.name, this.ev(st.init, env));
           let g = 0;
-          while (this.ev(st.cond, e)) { this.stmt(st.body, e, out); this.assign(st.inc, e); if (++g > 1e6) throw this.err('Boucle for trop longue.', st); }
-          return;
+          while (this.ev(st.cond, e)) {
+            if (this.stmt(st.body, e, out) === 'break') break;
+            this.assign(st.inc, e);
+            if (++g > 1e6) throw this.err('Boucle for trop longue.', st);
+          }
+          return null;
         }
         default: throw this.err('Instruction non prise en charge.', st);
       }

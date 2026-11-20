@@ -21,76 +21,6 @@ CodeMirror.defineSimpleMode('opl', {
   meta: { lineComment: '//', electricInput: /^\s*\}$/ }
 });
 
-const OPL_EXAMPLES = {
-  'Fromages (exemple simple, un seul fichier)': [{ name: 'fromages.mod', content:
-`dvar int x; // aoc
-dvar int y; // fromage 2
-
-maximize 3000*x + 1000*y;
-
-subject to {
-  30*x + 15*y <= 21000; // contrainte horaire
-  10000*x <= 4000000;
-  7500*y <= 6000000;
-}
-
-execute {
-  writeln(30, "*", x, " + ", 15, "*", y, " <= ", 21000);
-}
-` }],
-  'Production avec données (.mod + .dat)': [
-    { name: 'production.mod', content:
-`{string} Produits = ...;
-range Ressources = 1..2;
-
-float profit[Produits] = ...;
-float conso[Ressources][Produits] = ...;
-float dispo[Ressources] = ...;
-
-dvar float+ q[Produits];
-
-maximize sum(p in Produits) profit[p] * q[p];
-
-subject to {
-  forall(r in Ressources)
-    capacite: sum(p in Produits) conso[r][p] * q[p] <= dispo[r];
-}
-
-execute {
-  for (var p in Produits) writeln(p, " : ", q[p]);
-}
-` },
-    { name: 'production.dat', content:
-`Produits = {"A", "B"};
-profit = [3 2];
-conso = [[2 1]
-         [1 3]];
-dispo = [18 24];
-` }],
-  'Sac à dos (variables binaires)': [
-    { name: 'sac.mod', content:
-`int n = ...;
-int W = ...;
-range Objets = 1..n;
-int poids[Objets] = ...;
-int valeur[Objets] = ...;
-
-dvar boolean x[Objets];
-
-maximize sum(i in Objets) valeur[i] * x[i];
-
-subject to {
-  poids_max: sum(i in Objets) poids[i] * x[i] <= W;
-}
-` },
-    { name: 'sac.dat', content:
-`n = 4;
-W = 15;
-poids = [12 2 1 4];
-valeur = [4 2 1 10];
-` }]
-};
-
 const opl = {
   ready: false, cm: null, dir: '', files: [], open: new Map(), tabs: [], active: null,
   mod: null, dat: null, result: null, resTab: 'console', running: false, errLine: null
@@ -250,22 +180,43 @@ async function oplNewFile(kind) {
   await oplRefreshFiles(); await oplOpenFile(r.name);
 }
 
-async function oplLoadExample(key) {
-  const files = OPL_EXAMPLES[key];
-  if (!files) return;
-  let first = null;
-  const created = [];
+// Crée les fichiers d'un exemple. Un fichier déjà présent avec le même contenu est simplement rouvert (pas de doublon).
+async function oplLoadFiles(files) {
+  const names = [];
   for (const f of files) {
+    const existing = opl.files.find((x) => x.name === f.name);
+    if (existing) {
+      const cur = await window.studyide.oplRead(f.name);
+      if (cur.ok && cur.content === f.content) { names.push(f.name); continue; }
+    }
     const r = await window.studyide.oplCreate(f.name, f.content);
-    if (!r.ok) { notify('⚠ ' + r.error); return; }
-    created.push(r.name); if (!first) first = r.name;
+    if (!r.ok) { notify('⚠ ' + r.error); return null; }
+    names.push(r.name);
+    await oplRefreshFiles();
   }
+  return names;
+}
+
+async function oplLoadExample(key) {
+  const groups = OPL_EXAMPLE_GROUPS;
+  let files, label;
+  if (key === '__course__') {
+    files = groups[0].items.flatMap((it) => it.files); label = 'Tous les modèles du cours';
+  } else {
+    const it = groups.flatMap((g) => g.items).find((x) => x.title === key);
+    if (!it) return;
+    files = it.files; label = it.title;
+  }
+  const names = await oplLoadFiles(files);
+  if (!names) return;
   await oplRefreshFiles();
-  for (const n of created) await oplOpenFile(n, false);
-  await oplOpenFile(first);
-  if (created.length > 1) opl.dat = created[1];
-  oplRenderPair(); oplRenderFiles();
-  notify(`Exemple créé : ${created.join(', ')}`);
+  if (key === '__course__') { await oplOpenFile(names[0]); notify(`${label} : ${names.length} fichiers dans la liste de gauche`); return; }
+  for (const n of names) await oplOpenFile(n, false);
+  const mod = names.find(oplIsMod) || names[0], dat = names.find((n) => !oplIsMod(n));
+  await oplOpenFile(mod);
+  opl.mod = mod; opl.dat = dat || null;
+  oplRenderPair(); oplRenderFiles(); oplSaveSession();
+  notify(`Exemple chargé : ${names.join(', ')}`);
 }
 
 async function oplRename(name) {
@@ -368,7 +319,7 @@ function oplRenderResults() {
 function oplConsoleHtml(res) {
   const lines = [];
   if (res.status === 'optimal') {
-    lines.push(`// solution (${res.stats && res.stats.mip ? 'optimal, entiers' : 'optimal'}) with objective ${Opl.fmtNum(res.objective)}`);
+    lines.push(`// solution (optimal) with objective ${Opl.fmtNum(res.objective)}`);
     res.variables.forEach((v) => lines.push(`${v.name} = ${v.text};`));
     if (res.console && res.console.length) lines.push('', ...res.console);
     if (res.post && res.post.length) lines.push('', ...res.post);
@@ -428,7 +379,8 @@ function bindOplEvents() {
   el('oplDatSel').onchange = (e) => { opl.dat = e.target.value || null; oplRenderFiles(); oplSaveSession(); };
   el('oplAutosave').onchange = (e) => { opl.autosave = e.target.checked; oplSaveSession(); };
   const ex = el('oplExamples');
-  ex.innerHTML = '<option value="">📚 Exemples…</option>' + Object.keys(OPL_EXAMPLES).map((k) => `<option>${escapeHtml(k)}</option>`).join('');
+  ex.innerHTML = '<option value="">📚 Exemples et cours…</option><option value="__course__">⬇ Charger tout le cours (CPLEX)</option>'
+    + OPL_EXAMPLE_GROUPS.map((g) => `<optgroup label="${escapeHtml(g.group)}">${g.items.map((it) => `<option>${escapeHtml(it.title)}</option>`).join('')}</optgroup>`).join('');
   ex.onchange = (e) => { const k = e.target.value; e.target.value = ''; if (k) oplLoadExample(k); };
   document.querySelectorAll('.opl-rtab').forEach((b) => { b.onclick = () => { opl.resTab = b.dataset.tab; oplRenderResults(); }; });
 }

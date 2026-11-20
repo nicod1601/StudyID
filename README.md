@@ -130,6 +130,7 @@ Pour s'entraîner à la méthode du simplexe (cours d'optimisation) :
 - Langage pris en charge : `dvar` (`int`, `int+`, `float`, `float+`, `boolean`, tableaux, bornes `in a..b`), `range`, ensembles `{string}`, données scalaires et tableaux (dans le .mod ou avec `...` dans le .dat), `maximize` / `minimize`, `subject to { … }` avec étiquettes, `forall`, `sum`, contraintes chaînées `a <= expr <= b`, et blocs `execute` (`writeln`, `var`, `for`, `if`, `while`, `cplex.getObjValue()`).
 - Résolution exacte (fractions) : simplexe + **branch & bound** pour les variables entières et binaires.
 - Résultats : console au format OPL, valeurs des variables, contraintes avec marges et **prix duaux** (modèles sans variable entière).
+- **Bibliothèque du cours** (menu « Exemples et cours… ») : plus court chemin (Dijkstra), affectation, sac à dos, voyageur de commerce, Branch & Bound (exemples et exercices) et un mémo de syntaxe exécutable. « Charger tout le cours » crée les 12 fichiers d'un coup.
 - Non pris en charge pour l'instant : tuples, `setof`, modèles non linéaires, CP Optimizer, scripts `main { }`.
 - Code : `renderer/js/features/optim/` (moteur sans DOM, testable avec Node) et `src/main/ipc/opl.js`.
 
