@@ -120,7 +120,9 @@ Pour s'entraîner à la méthode du simplexe (cours d'optimisation) :
 
 - **Résoudre** : tape un programme linéaire (`max 3x1 + 2x2` puis une contrainte par ligne, `<=`, `>=` ou `=`) et obtiens la forme standard puis chaque tableau, avec colonne entrante, rapports b/a, ligne sortante et pivot. Calculs en **fractions exactes**. Gère la méthode des deux phases, les égalités, les problèmes impossibles, non bornés, l'optimum multiple et la dégénérescence.
 - **S'entraîner** : exercices générés à trois niveaux. Trois modes : répondre (vérification de z* et des x*), **pas à pas guidé** (tu choisis toi-même variable entrante et sortante à chaque tableau) et correction complète.
+- **Branch & Bound** : reproduit les arbres des tableurs de TD. Colle un sac à dos (ou un PLNE) et l'arbre se construit seul : numéro du nœud, solution de la relaxation, z, décision (brancher / solution entière / irréalisable / arrêt par la borne), tableau des ratios valeur/poids, calcul expliqué ligne par ligne, astuces, **mode quiz** (tu décides pour chaque nœud), ouverture du PL d'un nœud dans « Résoudre », export CSV. Options : branche explorée d'abord, profondeur ou meilleure borne. L'optimum ne dépend pas de l'ordre ; la numérotation peut différer de ta feuille.
 - Code : `renderer/js/features/simplex/engine.js` (moteur sans DOM, testable avec Node).
+- Code B&B : `bb-engine.js` (sans DOM) et `bb.js` (interface).
 
 ## 🧮 OPL / CPLEX (Ctrl+8)
 

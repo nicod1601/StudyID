@@ -21,6 +21,7 @@ function initSimplexMode() {
   el('sxLevel').innerHTML = Object.entries(SX_LEVELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   el('sxInput').value = localStorage.getItem('studyide.sxInput') || SX_EXAMPLES['Maximisation (2 variables)'];
   bindSimplexEvents();
+  if (typeof initBB === "function") initBB();
 }
 
 function sxFr(s) { return Simplex.Fr.of(s); }
@@ -218,7 +219,9 @@ function sxTab(tab) {
   document.querySelectorAll('.sx-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   el('sxPaneSolve').classList.toggle('hidden', tab !== 'solve');
   el('sxPaneTrain').classList.toggle('hidden', tab !== 'train');
+  el('sxPaneBB').classList.toggle('hidden', tab !== 'bb');
   if (tab === 'train' && !sx.ex) sxNewExercise();
+  if (tab === 'bb' && !bbs.res) bbRun();
 }
 
 function bindSimplexEvents() {

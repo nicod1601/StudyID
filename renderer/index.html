@@ -421,6 +421,7 @@
           <span class="sx-title">📐 Simplexe</span>
           <button class="sx-tab active" data-tab="solve">Résoudre</button>
           <button class="sx-tab" data-tab="train">S'entraîner</button>
+          <button class="sx-tab" data-tab="bb">Branch &amp; Bound</button>
         </div>
         <div class="sx-pane" id="sxPaneSolve">
           <div class="sx-cols">
@@ -439,6 +440,23 @@
         <div class="sx-pane hidden" id="sxPaneTrain">
           <div class="sx-toolbar"><select id="sxLevel"></select><button class="btn-run" id="sxNewBtn">🎲 Nouvel exercice</button></div>
           <div id="sxTrain"></div>
+        </div>
+        <div class="sx-pane hidden" id="sxPaneBB">
+          <div class="sx-cols">
+            <div class="sx-editor">
+              <textarea id="bbInput" spellcheck="false"></textarea>
+              <div class="bb-opts">
+                <label>Variables <select id="bbDomain"><option value="binary">binaires (0/1)</option><option value="integer">entières ≥ 0</option></select></label>
+                <label>Branche d'abord <select id="bbFirst"><option value="high">x = 1 / ≥</option><option value="low">x = 0 / ≤</option></select></label>
+                <label>Exploration <select id="bbStrategy"><option value="depth">en profondeur</option><option value="best">meilleure borne</option></select></label>
+                <label>Variable <select id="bbBranch"><option value="first">première fractionnaire</option><option value="most">la plus fractionnaire</option></select></label>
+                <label><input type="checkbox" id="bbQuiz" /> Mode quiz</label>
+              </div>
+              <div class="sx-actions"><button class="btn-run" id="bbRunBtn">▶ Construire l'arbre</button><select id="bbExamples"></select></div>
+              <div class="sx-syntax">Même format que « Résoudre ». Sac à dos : <code>max</code> + une contrainte <code>&lt;=</code>. L'arbre reprend la feuille de TD : solution de la relaxation, valeur z, décision d'arrêt.</div>
+            </div>
+            <div id="bbOut"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -904,6 +922,8 @@
   <script src="js/features/virt/virt-detail.js"></script>
   <script src="js/features/simplex/engine.js"></script>
   <script src="js/features/simplex/simplex.js"></script>
+  <script src="js/features/simplex/bb-engine.js"></script>
+  <script src="js/features/simplex/bb.js"></script>
   <script src="js/features/optim/opl-engine.js"></script>
   <script src="js/features/optim/opl-examples.js"></script>
   <script src="js/features/optim/opl.js"></script>
