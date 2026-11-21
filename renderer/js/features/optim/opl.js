@@ -169,7 +169,7 @@ async function oplSave(name) {
 
 async function oplNewFile(kind) {
   const def = kind === 'mod' ? 'modele.mod' : 'donnees.dat';
-  const input = prompt('Nom du fichier :', def);
+  const input = await askText('Nom du fichier :', def);
   if (!input) return;
   const name = /\.(mod|dat)$/i.test(input.trim()) ? input.trim() : input.trim() + '.' + kind;
   const content = kind === 'mod'
@@ -220,7 +220,7 @@ async function oplLoadExample(key) {
 }
 
 async function oplRename(name) {
-  const input = prompt('Nouveau nom :', name);
+  const input = await askText('Nouveau nom :', name);
   if (!input || input === name) return;
   if (oplDirty(name) && !(await oplSave(name))) return;
   const r = await window.studyide.oplRename(name, input.trim());

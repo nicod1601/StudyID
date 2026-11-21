@@ -17,7 +17,7 @@ function bindProjectEvents() {
 
   el('projectNewFileBtn').onclick = async () => {
     if (!projectRoot) return;
-    const name = prompt('Nom du nouveau fichier :', 'nouveau-fichier.txt');
+    const name = await askText('Nom du nouveau fichier :', 'nouveau-fichier.txt');
     if (!name) return;
     const res = await window.studyide.newProjectFile({ dirPath: projectRoot.path, name });
     if (!res.ok) { alert(res.error); return; }
@@ -27,7 +27,7 @@ function bindProjectEvents() {
 
   el('projectNewFolderBtn').onclick = async () => {
     if (!projectRoot) return;
-    const name = prompt('Nom du nouveau dossier :', 'nouveau-dossier');
+    const name = await askText('Nom du nouveau dossier :', 'nouveau-dossier');
     if (!name) return;
     const res = await window.studyide.newProjectFolder({ dirPath: projectRoot.path, name });
     if (!res.ok) { alert(res.error); return; }

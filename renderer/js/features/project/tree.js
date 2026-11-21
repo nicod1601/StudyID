@@ -95,7 +95,7 @@ function bindTreeEvents() {
     if (act) {
       e.stopPropagation();
       if (act.dataset.act === 'rename') {
-        const newName = prompt('Nouveau nom :', name);
+        const newName = await askText('Nouveau nom :', name);
         if (!newName || newName === name) return;
         const r = await window.studyide.renameProjectEntry({ oldPath: p, newName });
         if (!r.ok) { alert(r.error); return; }

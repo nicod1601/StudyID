@@ -132,7 +132,7 @@
 
   // ---------- Actions ----------
   async function createInProject(s, ctx) {
-    const rel = prompt('Où créer le fichier ? (chemin relatif au projet)', s.path || 'nouveau-fichier.txt');
+    const rel = await askText('Où créer le fichier ? (chemin relatif au projet)', s.path || 'nouveau-fichier.txt');
     if (!rel) return;
     let res = await window.studyide.createProjectFile({ rootPath: ctx.root, relPath: rel, content: s.code });
     if (!res.ok && res.exists) {

@@ -207,7 +207,7 @@ function bindEdtEvents() {
   el('edtOpenBrowserBtn').onclick = async () => {
     let url = edtHplanningUrl;
     if (!url) {
-      url = (prompt('Colle le lien de ton HyperPlanning :') || '').trim();
+      url = ((await askText('Colle le lien de ton HyperPlanning :')) || '').trim();
       if (!url) return;
       const s = await window.studyide.getSettings();
       await window.studyide.setSettings({ ...s, hplanningUrl: url });

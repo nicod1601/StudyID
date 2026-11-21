@@ -22,11 +22,11 @@ function virtSubst(cmd, vm) {
 }
 
 // Texte à saisir : <valeur> -> demandé à l'utilisateur ; null s'il annule
-function virtFillPlaceholders(cmd) {
+async function virtFillPlaceholders(cmd) {
   const names = [...new Set([...cmd.matchAll(/<([^<>\n]{1,40})>/g)].map((m) => m[1]))];
   let out = cmd;
   for (const n of names) {
-    const v = prompt(`Valeur pour « ${n} » :`);
+    const v = await askText(`Valeur pour « ${n} » :`);
     if (v === null) return null;
     out = out.split(`<${n}>`).join(v);
   }
@@ -51,9 +51,9 @@ function virtTerminalCommand(providerId, def, text) {
   return text;
 }
 
-function runInVirtTerminal(providerId, def, text) {
+async function runInVirtTerminal(providerId, def, text) {
   if (def.danger && !confirm(`Cette commande est destructrice :\n\n${text}\n\nLa lancer quand même ?`)) return;
-  const filled = virtFillPlaceholders(text);
+  const filled = await virtFillPlaceholders(text);
   if (filled === null) return;
   el('virtTerminalPanel').classList.remove('collapsed');
   virt.terms.runCommand(virtTerminalCommand(providerId, def, filled), '');
@@ -140,7 +140,7 @@ async function runVirtAction(vm, action) {
   if (action === 'snapshot') {
     const d = new Date();
     const p = (n) => String(n).padStart(2, '0');
-    const name = prompt('Nom de l\'instantané :', `snap-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`);
+    const name = await askText('Nom de l\'instantané :', `snap-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`);
     if (name === null) return;
     args.name = name.trim();
   }
